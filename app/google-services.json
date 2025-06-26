@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "320394095114",
+    "project_id": "stepmemory-9d3ee",
+    "storage_bucket": "stepmemory-9d3ee.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:320394095114:android:553d720c897fd523c38df3",
+        "android_client_info": {
+          "package_name": "com.kic.stepmemory"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD3nZ35uBfHZ5cZs9BapcPU231_XdhKsJk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
