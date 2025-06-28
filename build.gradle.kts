@@ -2,7 +2,7 @@
 
 buildscript {
     val kotlin_version = "1.9.0" // お使いのAndroid Studioの推奨バージョンに合わせる
-    val agp_version = "8.2.0"   // Android Gradle Pluginのバージョン
+    val agp_version = "8.4.0"   // Android Gradle Pluginのバージョン
 
     repositories {
         google()       // Googleのライブラリやプラグイン

@@ -2,6 +2,7 @@
 
 package com.kic.stepmemory.ui.review
 
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.widget.Toast
@@ -15,9 +16,11 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.maps.model.PolylineOptions
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.toObject
 import com.kic.stepmemory.R
 import com.kic.stepmemory.data.Record
 import com.kic.stepmemory.databinding.ActivityReviewBinding
+import com.kic.stepmemory.ui.streetview.StreetViewActivity // 作成したStreetViewActivity
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -52,6 +55,16 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
         // Google Map Fragmentを初期化し、コールバックを設定
         val mapFragment = supportFragmentManager.findFragmentById(R.id.map_review) as SupportMapFragment
         mapFragment.getMapAsync(this)
+
+        binding.fabShowStreetView.setOnClickListener {
+            recordId?.let { id ->
+                val intent = Intent(this, StreetViewActivity::class.java)
+                intent.putExtra("RECORD_ID", id)
+                startActivity(intent)
+            } ?: run {
+                Toast.makeText(this, "記録IDがありません。", Toast.LENGTH_SHORT).show()
+            }
+        }
 
         // 「メモを見る」ボタンのクリックリスナー
         binding.fabShowMemo.setOnClickListener {
