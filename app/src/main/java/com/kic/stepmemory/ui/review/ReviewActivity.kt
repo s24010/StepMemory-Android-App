@@ -108,7 +108,9 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
      * 取得した記録データを地図に表示します。
      */
     private fun displayRecordOnMap(record: Record) {
-        val pathPoints = record.getPathLatLngList() // JSON文字列からLatLngリストに変換
+        val pathPoints = record.pathPoints.map { geoPoint ->
+            LatLng(geoPoint.latitude, geoPoint.longitude)
+        }
 
         if (pathPoints.isNotEmpty()) {
             // パスを描画

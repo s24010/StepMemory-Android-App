@@ -31,18 +31,20 @@
         android:paddingTop="8dp"
         android:paddingBottom="8dp"
         android:clipToPadding="false"
-        tools:listitem="@layout/item_record" /> <TextView
-    android:id="@+id/tv_no_records"
-    android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
-    android:text="まだ記録がありません。\n新しい記録を作成しましょう！"
-    android:textSize="18sp"
-    android:gravity="center"
-    android:visibility="gone"
-    app:layout_constraintTop_toTopOf="@+id/rv_records"
-    app:layout_constraintBottom_toBottomOf="@+id/rv_records"
-    app:layout_constraintStart_toStartOf="@+id/rv_records"
-    app:layout_constraintEnd_toEndOf="@+id/rv_records" />
+        tools:listitem="@layout/item_record" />
+
+    <TextView
+        android:id="@+id/tv_no_records"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="まだ記録がありません。\n新しい記録を作成しましょう！"
+        android:textSize="18sp"
+        android:gravity="center"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="@+id/rv_records"
+        app:layout_constraintBottom_toBottomOf="@+id/rv_records"
+        app:layout_constraintStart_toStartOf="@+id/rv_records"
+        app:layout_constraintEnd_toEndOf="@+id/rv_records" />
 
     <ProgressBar
         android:id="@+id/progress_bar"

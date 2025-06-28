@@ -5,8 +5,10 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.firestore.FirebaseFirestore // Firebase Firestore SDK
+import com.google.gson.Gson
 import com.kic.stepmemory.MainActivity // メイン画面への遷移用
 import com.kic.stepmemory.data.Record // データモデル
+import com.kic.stepmemory.data.GeoPoint
 import com.kic.stepmemory.databinding.ActivityMemoBinding // View Binding
 
 /**
@@ -62,6 +64,15 @@ class MemoActivity : AppCompatActivity() {
             return
         }
 
+        val pathDataJson = intent.getStringExtra("RECORD_PATH_DATA") ?: "[]"
+        val pathPoints = try {
+            val latLngArray = Gson().fromJson(pathDataJson, Array<com.google.android.gms.maps.model.LatLng>::class.java)
+            latLngArray.map { latLng -> GeoPoint(latLng.latitude, latLng.longitude) }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            listOf<GeoPoint>()
+        }
+
         // Recordデータクラスのインスタンスを作成
         val newRecord = Record(
             name = if (recordName.isNotEmpty()) recordName else null, // 空文字列ならnull
@@ -69,7 +80,7 @@ class MemoActivity : AppCompatActivity() {
             startTime = recordStartTime,
             endTime = recordEndTime,
             durationMs = recordDurationMs,
-            pathData = recordPathDataJson ?: "[]", // nullの場合は空のJSON配列
+            pathPoints = pathPoints, // nullの場合は空のJSON配列
             createdAt = System.currentTimeMillis(), // 作成日時
             updatedAt = System.currentTimeMillis() // 更新日時
         )
@@ -77,20 +88,15 @@ class MemoActivity : AppCompatActivity() {
         // Firestoreのコレクション 'records' に新しいドキュメントを追加
         // add() メソッドは自動でドキュメントIDを生成してくれます。
         firestore.collection("records")
-            .add(newRecord) // RecordオブジェクトをFirestoreに保存
-            .addOnSuccessListener { documentReference ->
-                // 保存成功時の処理
+            .add(newRecord)
+            .addOnSuccessListener {
                 Toast.makeText(this, "記録を保存しました！", Toast.LENGTH_SHORT).show()
-                // idUUID をFirestoreが生成したIDで更新（後続の画面で参照する場合に備えて）
-                newRecord.idUUID = documentReference.id
-                // 初期画面に戻る
                 val intent = Intent(this, MainActivity::class.java)
                 intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
                 startActivity(intent)
-                finish() // 現在のアクティビティを終了
+                finish()
             }
             .addOnFailureListener { e ->
-                // 保存失敗時の処理
                 Toast.makeText(this, "記録の保存に失敗しました: ${e.message}", Toast.LENGTH_LONG).show()
                 e.printStackTrace()
             }
