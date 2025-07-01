@@ -20,6 +20,9 @@
         android:theme="@style/Theme.StepMemory"
         tools:targetApi="31">
         <activity
+            android:name=".ui.streetview.StreetViewActivity"
+            android:exported="false" />
+        <activity
             android:name=".ui.review.ReviewActivity"
             android:exported="false" />
         <activity

@@ -9,11 +9,11 @@ plugins {
 android {
     namespace = "com.kic.stepmemory" // あなたのapplicationIdと同じ値を設定
 
-    compileSdk = 34
+    compileSdk = 35
     defaultConfig {
         applicationId = "com.kic.stepmemory"
         minSdk = 29
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -60,6 +60,7 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.9.0")
     // Fragment KTX (Fragmentの拡張関数など)
     implementation("androidx.fragment:fragment-ktx:1.6.2")
+    implementation(libs.androidx.activity)
 
     // テスト用ライブラリ
     testImplementation("junit:junit:4.13.2")
