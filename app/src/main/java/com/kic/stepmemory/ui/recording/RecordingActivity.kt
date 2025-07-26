@@ -25,6 +25,7 @@ import com.kic.stepmemory.R
 import com.kic.stepmemory.databinding.ActivityRecordingBinding
 import com.kic.stepmemory.services.LocationTrackingService
 import com.kic.stepmemory.ui.memo.MemoActivity
+import com.kic.stepmemory.ui.landmark.AddLandmarkActivity
 
 class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
 
@@ -63,6 +64,38 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
         binding.fabMyLocation.setOnClickListener {
             moveCameraToCurrentLocation() // ★ 現在地ボタンの挙動も現在地取得に変更
         }
+
+        binding.fabAddLandmarkRecording.setOnClickListener {
+            // 現在地を取得
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED
+            ) {
+                // 権限がある場合のみ、現在地を取得する処理を実行
+                fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
+                    if (location != null) {
+                        // AddLandmarkActivityを開始し、現在地の緯度経度を渡す
+                        val intent = Intent(this, AddLandmarkActivity::class.java).apply {
+                            putExtra("LATITUDE", location.latitude)
+                            putExtra("LONGITUDE", location.longitude)
+                        }
+                        startActivity(intent)
+                    } else {
+                        Toast.makeText(this, "現在地が取得できませんでした。", Toast.LENGTH_SHORT)
+                            .show()
+                    }
+                }.addOnFailureListener {
+                    Toast.makeText(this, "現在地の取得に失敗しました。", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                // 権限がない場合は、ユーザーにトーストで通知する（もしくは再度権限をリクエストする）
+                Toast.makeText(this, "位置情報の権限がありません。", Toast.LENGTH_SHORT).show()
+                // 必要であれば、再度権限を要求するロジックをここに追加することもできます
+                // checkLocationPermissions() などを呼び出す
+            }
+        }
+
         updateTrackingButtonState()
     }
 

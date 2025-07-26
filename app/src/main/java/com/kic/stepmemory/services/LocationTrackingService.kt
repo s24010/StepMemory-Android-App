@@ -31,8 +31,8 @@ class LocationTrackingService : Service() {
     private lateinit var locationCallback: LocationCallback
 
     // 位置情報更新の間隔 (ms)
-    private val UPDATE_INTERVAL_MS: Long = 5000 // 5秒
-    private val FASTEST_UPDATE_INTERVAL_MS: Long = 3000 // 3秒 (可能な限り速い場合)
+    private val UPDATE_INTERVAL_MS: Long = 10000 // 5秒
+    private val FASTEST_UPDATE_INTERVAL_MS: Long = 8000 // 3秒 (可能な限り速い場合)
 
     // 通知チャンネルID
     companion object {

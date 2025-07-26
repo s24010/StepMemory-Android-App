@@ -1,104 +1,93 @@
 package com.kic.stepmemory.ui.streetview
 
-import android.animation.Animator
-import android.animation.ValueAnimator
-import android.location.Location
+import android.annotation.SuppressLint
+import android.content.Context
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.View
-import android.view.animation.LinearInterpolator
+import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import com.google.android.gms.maps.OnStreetViewPanoramaReadyCallback
-import com.google.android.gms.maps.StreetViewPanorama
-import com.google.android.gms.maps.SupportStreetViewPanoramaFragment
 import com.google.android.gms.maps.model.LatLng
-import com.google.android.gms.maps.model.StreetViewPanoramaCamera
-import com.google.android.gms.maps.model.StreetViewSource
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.toObject
-import com.kic.stepmemory.R
+import com.google.gson.Gson
 import com.kic.stepmemory.data.Record
 import com.kic.stepmemory.databinding.ActivityStreetViewBinding
 
-class StreetViewActivity : AppCompatActivity(), OnStreetViewPanoramaReadyCallback {
+class StreetViewActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityStreetViewBinding
     private var recordId: String? = null
     private lateinit var firestore: FirebaseFirestore
-    private lateinit var panorama: StreetViewPanorama
 
     private var pathPoints: List<LatLng> = listOf()
     private var currentIndex = 0
 
-    // --- アニメーション & 自動再生 ---
-    private val autoPlayHandler = Handler(Looper.getMainLooper())
-    private lateinit var autoPlayRunnable: Runnable
-    private var isPlaying = false
-    private var animator: ValueAnimator? = null
-
-    companion object {
-        private const val AUTO_PLAY_DELAY_MS = 1000L // 次の地点へ移動するまでの待機時間
-        private const val MIN_MOVE_DISTANCE_METERS = 5.0f
-    }
-
+    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityStreetViewBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        initializeUi()
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        supportActionBar?.title = "ストリートビュー"
+
         recordId = intent.getStringExtra("RECORD_ID")
         firestore = FirebaseFirestore.getInstance()
 
-        setupStreetViewFragment()
-        setupClickListeners()
-        setupAutoPlayRunnable()
-    }
+        // WebViewの設定
+        binding.streetViewWebview.settings.javaScriptEnabled = true
+        binding.streetViewWebview.addJavascriptInterface(WebAppInterface(this), "Android")
+        binding.streetViewWebview.loadUrl("file:///android_asset/streetview.html")
 
-    private fun initializeUi() {
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "ストリートビュー"
-        binding.fabPrev.visibility = View.GONE
-        binding.fabNext.visibility = View.GONE
-        binding.fabPlayPause.visibility = View.GONE
-    }
-
-    private fun setupStreetViewFragment() {
-        val streetViewPanoramaFragment =
-            supportFragmentManager.findFragmentById(R.id.street_view_panorama) as SupportStreetViewPanoramaFragment
-        streetViewPanoramaFragment.getStreetViewPanoramaAsync(this)
-    }
-
-    private fun setupClickListeners() {
-        binding.fabPrev.setOnClickListener {
-            stopAutoPlay()
-            moveToPreviousPoint()
-        }
-
-        binding.fabNext.setOnClickListener {
-            stopAutoPlay()
-            moveToNextPoint()
-        }
-
-        binding.fabPlayPause.setOnClickListener {
-            toggleAutoPlay()
-        }
-    }
-
-    private fun setupAutoPlayRunnable() {
-        autoPlayRunnable = Runnable {
-            if (isPlaying) {
-                moveToNextPoint()
+        // WebChromeClientを設定して、JavaScriptのalert()を扱えるようにする
+        binding.streetViewWebview.webChromeClient = object : WebChromeClient() {
+            override fun onJsAlert(view: WebView?, url: String?, message: String?, result: android.webkit.JsResult?): Boolean {
+                AlertDialog.Builder(this@StreetViewActivity)
+                    .setMessage(message)
+                    .setPositiveButton(android.R.string.ok) { _, _ -> result?.confirm() }
+                    .setCancelable(false)
+                    .create()
+                    .show()
+                return true
             }
         }
-    }
 
-    override fun onStreetViewPanoramaReady(panorama: StreetViewPanorama) {
-        this.panorama = panorama
-        panorama.isUserNavigationEnabled = false // ユーザーによる手動操作を禁止
-        recordId?.let { fetchRecordAndSetupPanorama(it) }
+        binding.streetViewWebview.loadUrl("file:///android_asset/streetview.html")
+
+        // 「前へ」ボタンの処理
+        binding.fabPrev.setOnClickListener {
+            if (currentIndex > 0) {
+                currentIndex--
+                updatePanoramaPosition()
+            } else {
+                Toast.makeText(this, "最初の地点です", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        // 「次へ」ボタンの処理
+        binding.fabNext.setOnClickListener {
+            if (currentIndex < pathPoints.size - 1) {
+                currentIndex++
+                updatePanoramaPosition()
+            } else {
+                Toast.makeText(this, "最後の地点です", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        // 「撮影日時を表示」ボタンの処理
+        binding.fabShowDate.setOnClickListener {
+            // WebView内のJavaScript関数 'showPanoramaDate()' を呼び出す
+            binding.streetViewWebview.evaluateJavascript("javascript:showPanoramaDate()", null)
+        }
+
+        recordId?.let { id ->
+            fetchRecordAndSetupPanorama(id)
+        }
     }
 
     private fun fetchRecordAndSetupPanorama(id: String) {
@@ -109,8 +98,13 @@ class StreetViewActivity : AppCompatActivity(), OnStreetViewPanoramaReadyCallbac
                     pathPoints = record.pathPoints.map { LatLng(it.latitude, it.longitude) }
                     binding.fabPrev.visibility = View.VISIBLE
                     binding.fabNext.visibility = View.VISIBLE
-                    binding.fabPlayPause.visibility = View.VISIBLE
-                    updatePanoramaPosition(pathPoints.first()) // 最初の位置へ移動
+                    // WebViewの準備ができたら最初の位置を更新
+                    binding.streetViewWebview.webViewClient = object : WebViewClient() {
+                        override fun onPageFinished(view: WebView?, url: String?) {
+                            super.onPageFinished(view, url)
+                            updatePanoramaPosition()
+                        }
+                    }
                 } else {
                     Toast.makeText(this, "ストリートビューを表示できる場所がありません。", Toast.LENGTH_SHORT).show()
                 }
@@ -120,117 +114,45 @@ class StreetViewActivity : AppCompatActivity(), OnStreetViewPanoramaReadyCallbac
             }
     }
 
-    private fun toggleAutoPlay() {
-        isPlaying = !isPlaying
-        if (isPlaying) {
-            binding.fabPlayPause.setImageResource(android.R.drawable.ic_media_pause)
-            moveToNextPoint()
-        } else {
-            stopAutoPlay()
-        }
-    }
-
-    private fun stopAutoPlay() {
-        isPlaying = false
-        binding.fabPlayPause.setImageResource(android.R.drawable.ic_media_play)
-        autoPlayHandler.removeCallbacks(autoPlayRunnable)
-        animator?.cancel()
-    }
-
-    private fun moveToNextPoint() {
-        if (currentIndex >= pathPoints.size - 1) {
-            Toast.makeText(this, "最後の地点です", Toast.LENGTH_SHORT).show()
-            stopAutoPlay()
-            return
-        }
-
-        val startPoint = pathPoints[currentIndex]
-        var nextIndex = currentIndex + 1
-
-        while (nextIndex < pathPoints.size - 1 && calculateDistance(startPoint, pathPoints[nextIndex]) < MIN_MOVE_DISTANCE_METERS) {
-            nextIndex++
-        }
-
-        val endPoint = pathPoints[nextIndex]
-        animatePanorama(startPoint, endPoint)
-        currentIndex = nextIndex
-    }
-
-    private fun moveToPreviousPoint() {
-        if (currentIndex <= 0) {
-            Toast.makeText(this, "最初の地点です", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val endPoint = pathPoints[currentIndex]
-        var prevIndex = currentIndex - 1
-
-        while (prevIndex > 0 && calculateDistance(pathPoints[prevIndex], endPoint) < MIN_MOVE_DISTANCE_METERS) {
-            prevIndex--
-        }
-
-        animatePanorama(endPoint, pathPoints[prevIndex], false)
-        currentIndex = prevIndex
-    }
-
-    private fun animatePanorama(start: LatLng, end: LatLng, autoPlayNext: Boolean = true) {
-        animator?.cancel()
-        val bearing = calculateBearing(start, end)
-        val distance = calculateDistance(start, end)
-        val duration = (distance * 150).toLong().coerceIn(1000, 5000)
-
-        val camera = StreetViewPanoramaCamera.Builder().bearing(bearing).build()
-        panorama.animateTo(camera, 500) // まず視点移動
-
-        animator = ValueAnimator.ofFloat(0f, 1f).apply {
-            this.duration = duration
-            interpolator = LinearInterpolator()
-            addUpdateListener { animation ->
-                val fraction = animation.animatedValue as Float
-                val lat = (1 - fraction) * start.latitude + fraction * end.latitude
-                val lng = (1 - fraction) * start.longitude + fraction * end.longitude
-                panorama.setPosition(LatLng(lat, lng))
+    private fun updatePanoramaPosition() {
+        if (pathPoints.isNotEmpty()) {
+            val currentPosition = pathPoints[currentIndex]
+            val nextPosition = if (currentIndex < pathPoints.size - 1) pathPoints[currentIndex + 1] else null
+            val lat = currentPosition.latitude
+            val lng = currentPosition.longitude
+            var heading = 0.0
+            if(nextPosition != null){
+                heading = calculateBearing(currentPosition, nextPosition).toDouble()
             }
-            addListener(object : Animator.AnimatorListener {
-                override fun onAnimationEnd(animation: Animator) {
-                    if (isPlaying && autoPlayNext) {
-                        autoPlayHandler.postDelayed(autoPlayRunnable, AUTO_PLAY_DELAY_MS)
-                    }
-                }
-                override fun onAnimationStart(animation: Animator) {}
-                override fun onAnimationCancel(animation: Animator) {}
-                override fun onAnimationRepeat(animation: Animator) {}
-            })
-        }
-        // 視点移動のアニメーションが終わってから移動を開始
-        Handler(Looper.getMainLooper()).postDelayed({
-            animator?.start()
-        }, 500)
-    }
 
-    private fun updatePanoramaPosition(position: LatLng) {
-        panorama.setPosition(position, 50, StreetViewSource.OUTDOOR)
+            // JavaScriptの関数を呼び出す
+            binding.streetViewWebview.evaluateJavascript("javascript: setPanorama($lat, $lng, $heading)", null)
+        }
     }
 
     private fun calculateBearing(start: LatLng, end: LatLng): Float {
-        val startLocation = Location("").apply { latitude = start.latitude; longitude = start.longitude }
-        val endLocation = Location("").apply { latitude = end.latitude; longitude = end.longitude }
+        val startLocation = android.location.Location("").apply {
+            latitude = start.latitude
+            longitude = start.longitude
+        }
+        val endLocation = android.location.Location("").apply {
+            latitude = end.latitude
+            longitude = end.longitude
+        }
         return startLocation.bearingTo(endLocation)
     }
 
-    private fun calculateDistance(start: LatLng, end: LatLng): Float {
-        val results = FloatArray(1)
-        Location.distanceBetween(start.latitude, start.longitude, end.latitude, end.longitude, results)
-        return results[0]
-    }
 
     override fun onSupportNavigateUp(): Boolean {
         finish()
         return true
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        stopAutoPlay()
+    // JavaScriptからKotlinを呼び出すためのインターフェース
+    class WebAppInterface(private val mContext: Context) {
+        @JavascriptInterface
+        fun showToast(toast: String) {
+            Toast.makeText(mContext, toast, Toast.LENGTH_SHORT).show()
+        }
     }
 }

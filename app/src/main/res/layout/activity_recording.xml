@@ -40,6 +40,22 @@
         android:focusable="true"
         app:srcCompat="@android:drawable/ic_menu_mylocation"
         app:layout_constraintBottom_toTopOf="@+id/btn_record_action"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toEndOf="parent"
+        android:contentDescription="現在地" />
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fab_add_landmark_recording"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="16dp"
+        android:clickable="true"
+        android:focusable="true"
+        app:srcCompat="@android:drawable/ic_menu_add"
+        app:tint="@android:color/white"
+        app:backgroundTint="?attr/colorPrimary"
+        app:layout_constraintBottom_toTopOf="@+id/fab_my_location"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:contentDescription="ランドマークを追加" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

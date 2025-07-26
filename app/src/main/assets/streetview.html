@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        html, body {
+          height: 100%;
+          margin: 0;
+          padding: 0;
+        }
+        #pano {
+          height: 100%;
+          width: 100%;
+        }
+    </style>
+</head>
+<body>
+<div id="pano"></div>
+<script>
+    let panorama;
+    let streetViewService;
+    let currentImageDate = "日付情報なし";
+
+    function initPano() {
+      streetViewService = new google.maps.StreetViewService();
+      panorama = new google.maps.StreetViewPanorama(
+        document.getElementById('pano'), {
+          // ▼▼▼ この一行が解決策です ▼▼▼
+          imageDateControl: true, // タイムマシン機能の表示を強制的に有効にする
+          // ▲▲▲ ここまで追加 ▲▲▲
+
+          // 念のため他のUIも有効化
+          disableDefaultUI: false,
+          addressControl: true,
+
+          // 不要な機能は無効化
+          motionTracking: false,
+          motionTrackingControl: false,
+
+          // 最初は非表示
+          visible: false
+        }
+      );
+    }
+
+    function setPanorama(lat, lng, heading) {
+      const location = {lat: lat, lng: lng};
+      const request = {
+          location: location,
+          radius: 50,
+          preference: 'nearest',
+          source: 'outdoor'
+      };
+
+      streetViewService.getPanorama(request, (data, status) => {
+        if (status === google.maps.StreetViewStatus.OK) {
+          if (data && data.imageDate) {
+            currentImageDate = data.imageDate;
+          } else {
+            currentImageDate = "日付情報なし";
+          }
+
+          panorama.setPano(data.location.pano);
+          panorama.setPov({
+            heading: heading,
+            pitch: 10
+          });
+          panorama.setVisible(true);
+
+        } else {
+          currentImageDate = "日付情報なし";
+          panorama.setVisible(false);
+          if (window.Android && typeof window.Android.showToast === 'function') {
+              window.Android.showToast("この地点のストリートビューは見つかりませんでした。");
+          }
+        }
+      });
+    }
+
+    function showPanoramaDate() {
+        const message = "撮影年月: " + currentImageDate + "\n\n" +
+                      "過去の画像を見るには、画面左上の日付コントローラーを使ってください。\n" +
+                      "(コントローラーが表示されない場合、過去の画像はありません)";
+        alert(message);
+    }
+
+</script>
+<script async defer
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCTXwtCHd8oMv3ESp_eCbSuzCYDv8YM1JM&callback=initPano">
+</script>
+</body>
+</html>
