@@ -6,8 +6,9 @@
     android:layout_height="match_parent"
     tools:context=".ui.streetview.StreetViewActivity">
 
-    <WebView
-        android:id="@+id/street_view_webview"
+    <fragment
+        android:id="@+id/street_view_panorama"
+        android:name="com.google.android.gms.maps.SupportStreetViewPanoramaFragment"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         app:layout_constraintBottom_toBottomOf="parent"
@@ -38,16 +39,5 @@
         app:srcCompat="@android:drawable/ic_media_next"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
-
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/fab_show_date"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="56dp"
-        android:layout_marginEnd="16dp"
-        android:contentDescription="撮影日時を表示"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:srcCompat="@android:drawable/ic_menu_my_calendar" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

@@ -1,33 +1,31 @@
 package com.kic.stepmemory.ui.streetview
 
-import android.annotation.SuppressLint
-import android.content.Context
+import android.location.Location
 import android.os.Bundle
 import android.view.View
-import android.webkit.JavascriptInterface
-import android.webkit.WebChromeClient
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.gms.maps.OnStreetViewPanoramaReadyCallback
+import com.google.android.gms.maps.StreetViewPanorama
+import com.google.android.gms.maps.SupportStreetViewPanoramaFragment
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.StreetViewSource
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.toObject
-import com.google.gson.Gson
+import com.kic.stepmemory.R
 import com.kic.stepmemory.data.Record
 import com.kic.stepmemory.databinding.ActivityStreetViewBinding
 
-class StreetViewActivity : AppCompatActivity() {
+class StreetViewActivity : AppCompatActivity(), OnStreetViewPanoramaReadyCallback {
 
     private lateinit var binding: ActivityStreetViewBinding
     private var recordId: String? = null
     private lateinit var firestore: FirebaseFirestore
+    private lateinit var panorama: StreetViewPanorama
 
     private var pathPoints: List<LatLng> = listOf()
     private var currentIndex = 0
 
-    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityStreetViewBinding.inflate(layoutInflater)
@@ -39,25 +37,9 @@ class StreetViewActivity : AppCompatActivity() {
         recordId = intent.getStringExtra("RECORD_ID")
         firestore = FirebaseFirestore.getInstance()
 
-        // WebViewの設定
-        binding.streetViewWebview.settings.javaScriptEnabled = true
-        binding.streetViewWebview.addJavascriptInterface(WebAppInterface(this), "Android")
-        binding.streetViewWebview.loadUrl("file:///android_asset/streetview.html")
-
-        // WebChromeClientを設定して、JavaScriptのalert()を扱えるようにする
-        binding.streetViewWebview.webChromeClient = object : WebChromeClient() {
-            override fun onJsAlert(view: WebView?, url: String?, message: String?, result: android.webkit.JsResult?): Boolean {
-                AlertDialog.Builder(this@StreetViewActivity)
-                    .setMessage(message)
-                    .setPositiveButton(android.R.string.ok) { _, _ -> result?.confirm() }
-                    .setCancelable(false)
-                    .create()
-                    .show()
-                return true
-            }
-        }
-
-        binding.streetViewWebview.loadUrl("file:///android_asset/streetview.html")
+        val streetViewPanoramaFragment =
+            supportFragmentManager.findFragmentById(R.id.street_view_panorama) as SupportStreetViewPanoramaFragment
+        streetViewPanoramaFragment.getStreetViewPanoramaAsync(this)
 
         // 「前へ」ボタンの処理
         binding.fabPrev.setOnClickListener {
@@ -78,12 +60,14 @@ class StreetViewActivity : AppCompatActivity() {
                 Toast.makeText(this, "最後の地点です", Toast.LENGTH_SHORT).show()
             }
         }
+    }
 
-        // 「撮影日時を表示」ボタンの処理
-        binding.fabShowDate.setOnClickListener {
-            // WebView内のJavaScript関数 'showPanoramaDate()' を呼び出す
-            binding.streetViewWebview.evaluateJavascript("javascript:showPanoramaDate()", null)
-        }
+    override fun onStreetViewPanoramaReady(panorama: StreetViewPanorama) {
+        this.panorama = panorama
+        // ユーザーによる自由な操作を許可
+        panorama.isUserNavigationEnabled = true
+        panorama.isZoomGesturesEnabled = true
+        panorama.isPanningGesturesEnabled = true
 
         recordId?.let { id ->
             fetchRecordAndSetupPanorama(id)
@@ -98,13 +82,7 @@ class StreetViewActivity : AppCompatActivity() {
                     pathPoints = record.pathPoints.map { LatLng(it.latitude, it.longitude) }
                     binding.fabPrev.visibility = View.VISIBLE
                     binding.fabNext.visibility = View.VISIBLE
-                    // WebViewの準備ができたら最初の位置を更新
-                    binding.streetViewWebview.webViewClient = object : WebViewClient() {
-                        override fun onPageFinished(view: WebView?, url: String?) {
-                            super.onPageFinished(view, url)
-                            updatePanoramaPosition()
-                        }
-                    }
+                    updatePanoramaPosition()
                 } else {
                     Toast.makeText(this, "ストリートビューを表示できる場所がありません。", Toast.LENGTH_SHORT).show()
                 }
@@ -117,42 +95,34 @@ class StreetViewActivity : AppCompatActivity() {
     private fun updatePanoramaPosition() {
         if (pathPoints.isNotEmpty()) {
             val currentPosition = pathPoints[currentIndex]
-            val nextPosition = if (currentIndex < pathPoints.size - 1) pathPoints[currentIndex + 1] else null
-            val lat = currentPosition.latitude
-            val lng = currentPosition.longitude
-            var heading = 0.0
-            if(nextPosition != null){
-                heading = calculateBearing(currentPosition, nextPosition).toDouble()
-            }
+            panorama.setPosition(currentPosition, 50, StreetViewSource.OUTDOOR)
 
-            // JavaScriptの関数を呼び出す
-            binding.streetViewWebview.evaluateJavascript("javascript: setPanorama($lat, $lng, $heading)", null)
+            // 次の地点があれば、その方向を向くようにカメラを調整
+            if (currentIndex < pathPoints.size - 1) {
+                val nextPosition = pathPoints[currentIndex + 1]
+                val bearing = calculateBearing(currentPosition, nextPosition)
+                val panoramaCamera = com.google.android.gms.maps.model.StreetViewPanoramaCamera.Builder()
+                    .bearing(bearing)
+                    .build()
+                panorama.animateTo(panoramaCamera, 1000)
+            }
         }
     }
 
     private fun calculateBearing(start: LatLng, end: LatLng): Float {
-        val startLocation = android.location.Location("").apply {
+        val startLocation = Location("").apply {
             latitude = start.latitude
             longitude = start.longitude
         }
-        val endLocation = android.location.Location("").apply {
+        val endLocation = Location("").apply {
             latitude = end.latitude
             longitude = end.longitude
         }
         return startLocation.bearingTo(endLocation)
     }
 
-
     override fun onSupportNavigateUp(): Boolean {
         finish()
         return true
-    }
-
-    // JavaScriptからKotlinを呼び出すためのインターフェース
-    class WebAppInterface(private val mContext: Context) {
-        @JavascriptInterface
-        fun showToast(toast: String) {
-            Toast.makeText(mContext, toast, Toast.LENGTH_SHORT).show()
-        }
     }
 }
