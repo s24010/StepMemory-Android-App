@@ -17,38 +17,40 @@ import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.maps.model.PolylineOptions
-import com.google.gson.Gson
+import com.google.firebase.firestore.FirebaseFirestore
 import com.kic.stepmemory.R
+import com.kic.stepmemory.data.Landmark
 import com.kic.stepmemory.databinding.ActivityRecordingBinding
 import com.kic.stepmemory.services.LocationTrackingService
+import com.kic.stepmemory.ui.landmark.AddLandmarkBottomSheet
 import com.kic.stepmemory.ui.memo.MemoActivity
-import com.kic.stepmemory.ui.landmark.AddLandmarkActivity
 
 class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private lateinit var binding: ActivityRecordingBinding
     private lateinit var googleMap: GoogleMap
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
+    private lateinit var firestore: FirebaseFirestore
+
     private var isTracking = false
     private var currentPathPoints: MutableList<LatLng> = LocationTrackingService.currentPathPoints
     private val LOCATION_PERMISSION_REQUEST_CODE = 1001
     private var trackingStartTime: Long = 0L
-
-    // ★ 現在地取得のために FusedLocationProviderClient を追加
-    private lateinit var fusedLocationClient: FusedLocationProviderClient
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityRecordingBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // ★ FusedLocationProviderClient のインスタンスを初期化
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        firestore = FirebaseFirestore.getInstance()
 
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "記録中"
+        supportActionBar?.title = "道の記録"
 
         val mapFragment = supportFragmentManager.findFragmentById(R.id.map) as SupportMapFragment
         mapFragment.getMapAsync(this)
@@ -62,41 +64,26 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
         }
 
         binding.fabMyLocation.setOnClickListener {
-            moveCameraToCurrentLocation() // ★ 現在地ボタンの挙動も現在地取得に変更
+            moveCameraToCurrentLocation()
         }
 
         binding.fabAddLandmarkRecording.setOnClickListener {
-            // 現在地を取得
-            if (ContextCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.ACCESS_FINE_LOCATION
-                ) == PackageManager.PERMISSION_GRANTED
-            ) {
-                // 権限がある場合のみ、現在地を取得する処理を実行
-                fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
-                    if (location != null) {
-                        // AddLandmarkActivityを開始し、現在地の緯度経度を渡す
-                        val intent = Intent(this, AddLandmarkActivity::class.java).apply {
-                            putExtra("LATITUDE", location.latitude)
-                            putExtra("LONGITUDE", location.longitude)
-                        }
-                        startActivity(intent)
-                    } else {
-                        Toast.makeText(this, "現在地が取得できませんでした。", Toast.LENGTH_SHORT)
-                            .show()
-                    }
-                }.addOnFailureListener {
-                    Toast.makeText(this, "現在地の取得に失敗しました。", Toast.LENGTH_SHORT).show()
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "ランドマーク追加には位置情報が必要です。", Toast.LENGTH_SHORT).show()
+                checkLocationPermissions()
+                return@setOnClickListener
+            }
+            fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
+                if (location != null) {
+                    val currentLatLng = LatLng(location.latitude, location.longitude)
+                    AddLandmarkBottomSheet(currentLatLng.latitude, currentLatLng.longitude) { landmark ->
+                        saveLandmarkToFirestore(landmark)
+                    }.show(supportFragmentManager, AddLandmarkBottomSheet.TAG)
+                } else {
+                    Toast.makeText(this, "現在地が取得できませんでした。", Toast.LENGTH_SHORT).show()
                 }
-            } else {
-                // 権限がない場合は、ユーザーにトーストで通知する（もしくは再度権限をリクエストする）
-                Toast.makeText(this, "位置情報の権限がありません。", Toast.LENGTH_SHORT).show()
-                // 必要であれば、再度権限を要求するロジックをここに追加することもできます
-                // checkLocationPermissions() などを呼び出す
             }
         }
-
-        updateTrackingButtonState()
     }
 
     override fun onMapReady(map: GoogleMap) {
@@ -105,17 +92,62 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
         googleMap.uiSettings.isMyLocationButtonEnabled = false
 
         enableMyLocationLayer()
-        // ★ これまでの固定地点表示から、現在地への移動に変更
         moveCameraToCurrentLocation()
+        fetchAndDrawLandmarks()
+
+        isTracking = LocationTrackingService.isServiceRunning
+        updateTrackingButtonState()
 
         if (isTracking && currentPathPoints.isNotEmpty()) {
             drawPathOnMap()
         }
     }
 
-    /**
-     * ★ 現在地を取得してカメラを移動させる関数
-     */
+    private fun saveLandmarkToFirestore(landmark: Landmark) {
+        firestore.collection("landmarks")
+            .add(landmark)
+            .addOnSuccessListener {
+                Toast.makeText(this, "ランドマークを登録しました！", Toast.LENGTH_SHORT).show()
+                fetchAndDrawLandmarks(clearMap = false)
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "ランドマークの登録に失敗しました: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+    }
+
+    private fun fetchAndDrawLandmarks(clearMap: Boolean = true) {
+        if (clearMap) {
+            googleMap.clear()
+        }
+        firestore.collection("landmarks").get()
+            .addOnSuccessListener { querySnapshot ->
+                for (document in querySnapshot.documents) {
+                    val landmark = document.toObject(Landmark::class.java)
+                    landmark?.let {
+                        val latLng = LatLng(it.latitude, it.longitude)
+                        googleMap.addMarker(
+                            MarkerOptions()
+                                .position(latLng)
+                                .title(it.title)
+                                .snippet(it.episode)
+                                .icon(BitmapDescriptorFactory.defaultMarker(getMarkerColor(it.iconType)))
+                        )
+                    }
+                }
+            }
+    }
+
+    private fun getMarkerColor(iconType: String): Float {
+        return when (iconType) {
+            "FOOD" -> BitmapDescriptorFactory.HUE_ORANGE
+            "SCENERY" -> BitmapDescriptorFactory.HUE_GREEN
+            "ONSEN" -> BitmapDescriptorFactory.HUE_CYAN
+            "SHOPPING" -> BitmapDescriptorFactory.HUE_MAGENTA
+            "SIGHTSEEING" -> BitmapDescriptorFactory.HUE_YELLOW
+            else -> BitmapDescriptorFactory.HUE_RED
+        }
+    }
+
     private fun moveCameraToCurrentLocation() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             fusedLocationClient.lastLocation
@@ -128,25 +160,18 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
                     }
                 }
         } else {
-            // 権限がない場合は、デフォルト地点（大阪駅）を表示
             val defaultLocation = LatLng(34.702485, 135.495951)
             googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(defaultLocation, 10f))
         }
     }
 
     private fun checkLocationPermissions() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                    startTracking()
-                } else {
-                    ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION), LOCATION_PERMISSION_REQUEST_CODE)
-                }
-            } else {
-                startTracking()
-            }
-        } else {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), LOCATION_PERMISSION_REQUEST_CODE)
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION), LOCATION_PERMISSION_REQUEST_CODE)
+        } else {
+            startTracking()
         }
     }
 
@@ -175,12 +200,13 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private fun stopTracking() {
         isTracking = false
-        updateTrackingButtonState()
         val trackingEndTime = System.currentTimeMillis()
         val intent = Intent(this, LocationTrackingService::class.java).apply {
             action = LocationTrackingService.ACTION_STOP_TRACKING
         }
         stopService(intent)
+
+        updateTrackingButtonState()
 
         if (currentPathPoints.isNotEmpty()) {
             googleMap.addMarker(MarkerOptions().position(currentPathPoints.last()).title("終了地点"))
@@ -188,8 +214,8 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
 
         Toast.makeText(this, "記録を終了しました。", Toast.LENGTH_SHORT).show()
         val memoIntent = Intent(this, MemoActivity::class.java)
-        val pathDataJson = Gson().toJson(currentPathPoints)
-        memoIntent.putExtra("RECORD_PATH_DATA", pathDataJson)
+
+        // ★★★ Intentで巨大な経路データを渡すのを完全にやめる ★★★
         memoIntent.putExtra("RECORD_START_TIME", trackingStartTime)
         memoIntent.putExtra("RECORD_END_TIME", trackingEndTime)
         memoIntent.putExtra("RECORD_DURATION_MS", trackingEndTime - trackingStartTime)
@@ -199,6 +225,7 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private fun drawPathOnMap() {
         googleMap.clear()
+        fetchAndDrawLandmarks()
         if (currentPathPoints.size > 1) {
             googleMap.addMarker(MarkerOptions().position(currentPathPoints.first()).title("開始地点"))
             val polylineOptions = PolylineOptions().addAll(currentPathPoints).color(Color.BLUE).width(10f)
@@ -227,8 +254,14 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
 
     override fun onResume() {
         super.onResume()
-        if (isTracking) {
-            drawPathOnMap()
+        isTracking = LocationTrackingService.isServiceRunning
+        updateTrackingButtonState()
+
+        if(::googleMap.isInitialized) {
+            fetchAndDrawLandmarks()
+            if (isTracking) {
+                drawPathOnMap()
+            }
         }
     }
 }

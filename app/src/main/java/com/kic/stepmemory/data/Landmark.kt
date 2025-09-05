@@ -1,18 +1,20 @@
 package com.kic.stepmemory.data
 
-import com.google.firebase.firestore.GeoPoint
-import com.google.firebase.firestore.ServerTimestamp
-import java.io.Serializable
+import com.google.firebase.firestore.Exclude
+import com.google.firebase.firestore.IgnoreExtraProperties
 import java.util.Date
 
-// Serializableを実装してActivity間でオブジェクトを渡せるようにします
+@IgnoreExtraProperties
 data class Landmark(
-    val id: String = "",
-    val userId: String = "", // ユーザーを識別するためのID（将来の拡張用）
-    val name: String = "",
-    val episode: String = "",
-    val imageUrl: String? = null, // 写真のURL（今回は実装範囲外）
-    val location: GeoPoint = GeoPoint(0.0, 0.0),
-    @ServerTimestamp
-    val createdAt: Date? = null
-) : Serializable
+    var title: String = "",
+    var episode: String = "",
+    var iconType: String = "PIN",
+    var latitude: Double = 0.0,
+    var longitude: Double = 0.0,
+    // ★★★ データ型を Long から Date? に変更 ★★★
+    var createdAt: Date? = null
+) {
+    @get:Exclude
+    @set:Exclude
+    var id: String = ""
+}

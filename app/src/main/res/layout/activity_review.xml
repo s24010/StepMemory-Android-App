@@ -30,19 +30,6 @@
         app:layout_constraintBottom_toTopOf="@+id/fab_show_memo"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/fab_add_landmark"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginEnd="16dp"
-        android:layout_marginBottom="16dp"
-        android:src="@android:drawable/ic_menu_add"
-        app:tint="@android:color/white"
-        app:backgroundTint="?attr/colorPrimaryVariant"
-        app:layout_constraintBottom_toTopOf="@+id/fab_show_street_view"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:contentDescription="ランドマークを追加" />
-
     <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
         android:id="@+id/fab_show_memo"
         android:layout_width="wrap_content"
@@ -51,10 +38,22 @@
         android:layout_marginBottom="16dp"
         android:text="メモを見る"
         android:textColor="@android:color/white"
+        app:backgroundTint="?attr/colorPrimary"
         app:icon="@android:drawable/ic_menu_edit"
         app:iconTint="@android:color/white"
-        app:backgroundTint="?attr/colorPrimary"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
+
+    <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
+        android:id="@+id/fab_add_landmark_review"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginBottom="16dp"
+        android:text="ランドマーク追加"
+        android:visibility="visible"
+        app:icon="@android:drawable/ic_menu_add"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

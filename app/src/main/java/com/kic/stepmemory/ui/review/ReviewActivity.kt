@@ -1,5 +1,3 @@
-// app/src/main/java/com/kic/stepmemory/ui/review/ReviewActivity.kt
-
 package com.kic.stepmemory.ui.review
 
 import android.content.Intent
@@ -14,31 +12,32 @@ import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.LatLngBounds
+import com.google.android.gms.maps.model.Marker
 import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.maps.model.PolylineOptions
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.toObject
 import com.kic.stepmemory.R
 import com.kic.stepmemory.data.Landmark
 import com.kic.stepmemory.data.Record
 import com.kic.stepmemory.databinding.ActivityReviewBinding
-import com.kic.stepmemory.ui.landmark.AddLandmarkActivity
+import com.kic.stepmemory.ui.landmark.AddLandmarkBottomSheet
 import com.kic.stepmemory.ui.streetview.StreetViewActivity
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/**
- * 振り返り画面のアクティビティです。
- * 選択された記録のパスを地図に表示し、メモを参照したり、ランドマークを追加・表示したりします。
- */
 class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private lateinit var binding: ActivityReviewBinding
     private lateinit var googleMap: GoogleMap
     private lateinit var firestore: FirebaseFirestore
 
-    private var recordId: String? = null // 履歴画面から渡された記録ID
-    private var currentRecord: Record? = null // 読み込んだ記録データ
+    private var recordId: String? = null
+    private var currentRecord: Record? = null
+
+    private var placementMarker: Marker? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,14 +72,30 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
             }
         }
 
-        // 「ランドマークを追加」ボタンのクリックリスナー
-        binding.fabAddLandmark.setOnClickListener {
-            val centerLatLng = googleMap.cameraPosition.target
-            val intent = Intent(this, AddLandmarkActivity::class.java).apply {
-                putExtra("LATITUDE", centerLatLng.latitude)
-                putExtra("LONGITUDE", centerLatLng.longitude)
+        binding.fabAddLandmarkReview.setOnClickListener {
+            if (placementMarker == null) {
+                val center = googleMap.cameraPosition.target
+                placementMarker = googleMap.addMarker(
+                    MarkerOptions()
+                        .position(center)
+                        .title("ここにランドマークを設置")
+                        .draggable(true)
+                )
+                placementMarker?.showInfoWindow()
+                binding.fabAddLandmarkReview.text = "場所を決定"
+                binding.fabAddLandmarkReview.setIconResource(android.R.drawable.ic_menu_save)
+                Toast.makeText(this, "ピンを長押しして好きな場所に移動してください。", Toast.LENGTH_LONG).show()
+            } else {
+                val position = placementMarker!!.position
+                placementMarker?.remove()
+                placementMarker = null
+                binding.fabAddLandmarkReview.text = "ランドマーク追加"
+                binding.fabAddLandmarkReview.setIconResource(android.R.drawable.ic_menu_add)
+
+                AddLandmarkBottomSheet(position.latitude, position.longitude) { landmark ->
+                    saveLandmarkToFirestore(landmark)
+                }.show(supportFragmentManager, AddLandmarkBottomSheet.TAG)
             }
-            startActivity(intent)
         }
     }
 
@@ -95,15 +110,7 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
             finish()
         }
 
-        // ランドマークのマーカークリックリスナーを設定
-        googleMap.setOnMarkerClickListener { marker ->
-            if (marker.tag is Landmark) {
-                val landmark = marker.tag as Landmark
-                showLandmarkDialog(landmark)
-                return@setOnMarkerClickListener true
-            }
-            return@setOnMarkerClickListener false
-        }
+        fetchAndDrawLandmarks()
     }
 
     private fun fetchRecordFromFirestore(id: String) {
@@ -127,6 +134,50 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
             }
     }
 
+    private fun saveLandmarkToFirestore(landmark: Landmark) {
+        firestore.collection("landmarks")
+            .add(landmark)
+            .addOnSuccessListener {
+                Toast.makeText(this, "ランドマークを登録しました！", Toast.LENGTH_SHORT).show()
+                googleMap.clear()
+                displayRecordOnMap(currentRecord!!)
+                fetchAndDrawLandmarks()
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "ランドマークの登録に失敗しました: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+    }
+
+    private fun fetchAndDrawLandmarks() {
+        firestore.collection("landmarks").get()
+            .addOnSuccessListener { querySnapshot ->
+                for (document in querySnapshot.documents) {
+                    val landmark = document.toObject(Landmark::class.java)
+                    landmark?.let {
+                        val latLng = LatLng(it.latitude, it.longitude)
+                        googleMap.addMarker(
+                            MarkerOptions()
+                                .position(latLng)
+                                .title(it.title)
+                                .snippet(it.episode)
+                                .icon(BitmapDescriptorFactory.defaultMarker(getMarkerColor(it.iconType)))
+                        )
+                    }
+                }
+            }
+    }
+
+    private fun getMarkerColor(iconType: String): Float {
+        return when (iconType) {
+            "FOOD" -> BitmapDescriptorFactory.HUE_ORANGE
+            "SCENERY" -> BitmapDescriptorFactory.HUE_GREEN
+            "ONSEN" -> BitmapDescriptorFactory.HUE_CYAN
+            "SHOPPING" -> BitmapDescriptorFactory.HUE_MAGENTA
+            "SIGHTSEEING" -> BitmapDescriptorFactory.HUE_YELLOW
+            else -> BitmapDescriptorFactory.HUE_RED
+        }
+    }
+
     private fun displayRecordOnMap(record: Record) {
         val pathPoints = record.pathPoints.map { geoPoint ->
             LatLng(geoPoint.latitude, geoPoint.longitude)
@@ -142,7 +193,7 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
             googleMap.addMarker(MarkerOptions().position(pathPoints.first()).title("開始地点"))
             googleMap.addMarker(MarkerOptions().position(pathPoints.last()).title("終了地点"))
 
-            val bounds = com.google.android.gms.maps.model.LatLngBounds.Builder()
+            val bounds = LatLngBounds.Builder()
             for (point in pathPoints) {
                 bounds.include(point)
             }
@@ -150,33 +201,6 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
         } else {
             Toast.makeText(this, "この記録にはパスデータがありません。", Toast.LENGTH_SHORT).show()
         }
-
-        // ランドマークを取得して表示する関数を呼び出す
-        fetchAndDisplayLandmarks()
-    }
-
-    /**
-     * Firestoreからランドマークのデータを取得し、地図上に表示します。
-     */
-    private fun fetchAndDisplayLandmarks() {
-        firestore.collection("landmarks")
-            .get()
-            .addOnSuccessListener { documents ->
-                for (document in documents) {
-                    val landmark = document.toObject(Landmark::class.java).copy(id = document.id)
-                    val position = LatLng(landmark.location.latitude, landmark.location.longitude)
-                    val marker = googleMap.addMarker(
-                        MarkerOptions()
-                            .position(position)
-                            .title(landmark.name)
-                            .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_YELLOW))
-                    )
-                    marker?.tag = landmark
-                }
-            }
-            .addOnFailureListener { e ->
-                Toast.makeText(this, "ランドマークの読み込みに失敗しました。", Toast.LENGTH_SHORT).show()
-            }
     }
 
     private fun showMemoDialog(name: String?, memo: String?) {
@@ -186,22 +210,6 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
         AlertDialog.Builder(this)
             .setTitle(dialogTitle)
             .setMessage(dialogMessage)
-            .setPositiveButton("閉じる", null)
-            .show()
-    }
-
-    /**
-     * ランドマークの詳細をダイアログで表示します。
-     */
-    private fun showLandmarkDialog(landmark: Landmark) {
-        val message = if (landmark.episode.isNotEmpty()) {
-            landmark.episode
-        } else {
-            "このランドマークにはエピソードが登録されていません。"
-        }
-        AlertDialog.Builder(this)
-            .setTitle("🚩 ${landmark.name}")
-            .setMessage(message)
             .setPositiveButton("閉じる", null)
             .show()
     }

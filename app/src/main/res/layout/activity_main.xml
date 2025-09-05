@@ -55,7 +55,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
         android:padding="16dp"
-        android:text="場所のアウラを見る"
+        android:text="絆の可視化"
         android:textSize="18sp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"

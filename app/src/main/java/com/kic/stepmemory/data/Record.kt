@@ -1,11 +1,9 @@
-// app/src/main/java/com/kic/stepmemory/data/Record.kt
-
 package com.kic.stepmemory.data
 
 import com.google.firebase.firestore.Exclude
 import com.google.firebase.firestore.IgnoreExtraProperties
+import java.util.Date
 
-// このファイルからはGsonとExcludeのimportは不要になります
 @IgnoreExtraProperties
 data class Record(
     var userId: String? = null,
@@ -15,10 +13,10 @@ data class Record(
     var durationMs: Long? = null,
     var pathPoints: List<GeoPoint> = listOf(),
     var memo: String? = null,
-    var createdAt: Long? = null,
-    var updatedAt: Long? = null
+    // ★★★ データ型を Long? から Date? に変更 ★★★
+    var createdAt: Date? = null,
+    var updatedAt: Date? = null
 ){
-    // ★ プロパティとしてidUUIDを定義し、Firestoreの対象外にする
     @get:Exclude
     @set:Exclude
     var idUUID: String = ""
