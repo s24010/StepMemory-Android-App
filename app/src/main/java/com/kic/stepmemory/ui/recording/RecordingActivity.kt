@@ -5,8 +5,10 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.location.Location
+import android.media.MediaRecorder
 import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -28,6 +30,9 @@ import com.kic.stepmemory.databinding.ActivityRecordingBinding
 import com.kic.stepmemory.services.LocationTrackingService
 import com.kic.stepmemory.ui.landmark.AddLandmarkBottomSheet
 import com.kic.stepmemory.ui.memo.MemoActivity
+import java.io.File
+import java.io.IOException
+import java.util.UUID
 
 class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
 
@@ -41,6 +46,12 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
     private val LOCATION_PERMISSION_REQUEST_CODE = 1001
     private var trackingStartTime: Long = 0L
 
+    // ★★★ 音声録音関連のプロパティをこちらに移動 ★★★
+    private var mediaRecorder: MediaRecorder? = null
+    private var audioFilePath: String? = null
+    private var isAudioRecording = false
+    private val AUDIO_PERMISSION_REQUEST_CODE = 2002
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityRecordingBinding.inflate(layoutInflater)
@@ -50,7 +61,7 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
         firestore = FirebaseFirestore.getInstance()
 
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "道の記録"
+        supportActionBar?.title = "記録中"
 
         val mapFragment = supportFragmentManager.findFragmentById(R.id.map) as SupportMapFragment
         mapFragment.getMapAsync(this)
@@ -82,6 +93,14 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
                 } else {
                     Toast.makeText(this, "現在地が取得できませんでした。", Toast.LENGTH_SHORT).show()
                 }
+            }
+        }
+
+        binding.fabRecordAudio.setOnClickListener {
+            if (isAudioRecording) {
+                stopAudioRecording()
+            } else {
+                checkAudioPermissionAndStartRecording()
             }
         }
     }
@@ -155,13 +174,8 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
                     if (location != null) {
                         val currentLatLng = LatLng(location.latitude, location.longitude)
                         googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(currentLatLng, 15f))
-                    } else {
-                        Toast.makeText(this, "現在地を取得できませんでした。", Toast.LENGTH_SHORT).show()
                     }
                 }
-        } else {
-            val defaultLocation = LatLng(34.702485, 135.495951)
-            googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(defaultLocation, 10f))
         }
     }
 
@@ -177,12 +191,21 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
-            if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
-                startTracking()
-                enableMyLocationLayer()
-            } else {
-                Toast.makeText(this, "位置情報パーミッションが拒否されました。", Toast.LENGTH_LONG).show()
+        when (requestCode) {
+            LOCATION_PERMISSION_REQUEST_CODE -> {
+                if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
+                    startTracking()
+                    enableMyLocationLayer()
+                } else {
+                    Toast.makeText(this, "位置情報パーミッションが拒否されました。", Toast.LENGTH_LONG).show()
+                }
+            }
+            AUDIO_PERMISSION_REQUEST_CODE -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    startAudioRecording()
+                } else {
+                    Toast.makeText(this, "マイクの使用が許可されませんでした。", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
@@ -206,6 +229,10 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
         }
         stopService(intent)
 
+        if (isAudioRecording) {
+            stopAudioRecording()
+        }
+
         updateTrackingButtonState()
 
         if (currentPathPoints.isNotEmpty()) {
@@ -215,7 +242,10 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
         Toast.makeText(this, "記録を終了しました。", Toast.LENGTH_SHORT).show()
         val memoIntent = Intent(this, MemoActivity::class.java)
 
-        // ★★★ Intentで巨大な経路データを渡すのを完全にやめる ★★★
+        audioFilePath?.let {
+            memoIntent.putExtra("AUDIO_FILE_PATH", it)
+        }
+
         memoIntent.putExtra("RECORD_START_TIME", trackingStartTime)
         memoIntent.putExtra("RECORD_END_TIME", trackingEndTime)
         memoIntent.putExtra("RECORD_DURATION_MS", trackingEndTime - trackingStartTime)
@@ -247,6 +277,51 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
         binding.btnRecordAction.text = if (isTracking) "記録を終了する" else "記録を開始する"
     }
 
+    private fun checkAudioPermissionAndStartRecording() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            startAudioRecording()
+        } else {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), AUDIO_PERMISSION_REQUEST_CODE)
+        }
+    }
+
+    private fun startAudioRecording() {
+        if (!isTracking) {
+            Toast.makeText(this, "記録を開始してから音声メモを録音できます。", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val audioFile = File(externalCacheDir, "${UUID.randomUUID()}.3gp")
+        audioFilePath = audioFile.absolutePath
+
+        mediaRecorder = MediaRecorder().apply {
+            setAudioSource(MediaRecorder.AudioSource.MIC)
+            setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
+            setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
+            setOutputFile(audioFilePath)
+            try {
+                prepare()
+                start()
+                isAudioRecording = true
+                binding.tvRecordingStatus.text = "録音中..."
+                binding.tvRecordingStatus.visibility = View.VISIBLE
+                binding.fabRecordAudio.setImageResource(android.R.drawable.ic_media_pause)
+            } catch (e: IOException) {
+                Toast.makeText(this@RecordingActivity, "録音の準備に失敗しました。", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun stopAudioRecording() {
+        mediaRecorder?.apply {
+            stop()
+            release()
+        }
+        mediaRecorder = null
+        isAudioRecording = false
+        binding.tvRecordingStatus.text = "録音完了"
+        binding.fabRecordAudio.setImageResource(android.R.drawable.ic_btn_speak_now)
+    }
+
     override fun onSupportNavigateUp(): Boolean {
         finish()
         return true
@@ -263,5 +338,11 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
                 drawPathOnMap()
             }
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        mediaRecorder?.release()
+        mediaRecorder = null
     }
 }

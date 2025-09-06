@@ -19,14 +19,9 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.StepMemory"
         tools:targetApi="31">
+
         <activity
-            android:name=".ui.landmark.AddLandmarkBottomSheet"
-            android:exported="false" />
-        <activity
-            android:name=".ui.aura.AuraMapActivity"
-            android:exported="false" />
-        <activity
-            android:name=".ui.landmark.AddLandmarkActivity"
+            android:name=".ui.heatmap.HeatmapActivity"
             android:exported="false" />
         <activity
             android:name=".ui.streetview.StreetViewActivity"
@@ -37,6 +32,21 @@
         <activity
             android:name=".ui.memo.MemoActivity"
             android:exported="false" />
+        <activity
+            android:name=".ui.history.HistoryActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ui.recording.RecordingActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
 
         <meta-data
             android:name="com.google.android.geo.API_KEY"
@@ -46,21 +56,6 @@
             android:name=".services.LocationTrackingService"
             android:foregroundServiceType="location" />
 
-        <activity
-            android:name=".ui.history.HistoryActivity"
-            android:exported="false" />
-        <activity
-            android:name=".ui.recording.RecordingActivity"
-            android:exported="false" />
-        <activity
-            android:name=".MainActivity"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
     </application>
 
 </manifest>

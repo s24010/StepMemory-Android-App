@@ -2,7 +2,9 @@ package com.kic.stepmemory.ui.review
 
 import android.content.Intent
 import android.graphics.Color
+import android.media.MediaPlayer
 import android.os.Bundle
+import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -24,6 +26,7 @@ import com.kic.stepmemory.data.Record
 import com.kic.stepmemory.databinding.ActivityReviewBinding
 import com.kic.stepmemory.ui.landmark.AddLandmarkBottomSheet
 import com.kic.stepmemory.ui.streetview.StreetViewActivity
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -38,6 +41,9 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
     private var currentRecord: Record? = null
 
     private var placementMarker: Marker? = null
+
+    private var mediaPlayer: MediaPlayer? = null
+    private var isAudioPlaying = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -69,6 +75,16 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
                 showMemoDialog(record.name, record.memo)
             } ?: run {
                 Toast.makeText(this, "メモが読み込まれていません。", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        binding.fabPlayAudio.setOnClickListener {
+            if (isAudioPlaying) {
+                stopAudio()
+            } else {
+                currentRecord?.audioUrl?.let { url ->
+                    playAudio(url)
+                }
             }
         }
 
@@ -122,6 +138,10 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
                     currentRecord = it
                     displayRecordOnMap(it)
                     supportActionBar?.title = it.name ?: formatRecordTitle(it)
+
+                    if (!it.audioUrl.isNullOrEmpty()) {
+                        binding.fabPlayAudio.visibility = View.VISIBLE
+                    }
                 } ?: run {
                     Toast.makeText(this, "記録が見つかりませんでした。", Toast.LENGTH_LONG).show()
                     finish()
@@ -214,14 +234,54 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
             .show()
     }
 
+    private fun playAudio(url: String) {
+        mediaPlayer = MediaPlayer().apply {
+            try {
+                setDataSource(url)
+                prepareAsync()
+                setOnPreparedListener {
+                    start()
+                    isAudioPlaying = true
+                    binding.fabPlayAudio.text = "停止"
+                    binding.fabPlayAudio.setIconResource(android.R.drawable.ic_media_pause)
+                }
+                setOnCompletionListener {
+                    stopAudio()
+                }
+                setOnErrorListener { _, _, _ ->
+                    Toast.makeText(this@ReviewActivity, "音声の再生に失敗しました。", Toast.LENGTH_SHORT).show()
+                    stopAudio()
+                    true
+                }
+            } catch (e: IOException) {
+                e.printStackTrace()
+                Toast.makeText(this@ReviewActivity, "音声ファイルが見つかりません。", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun stopAudio() {
+        mediaPlayer?.release()
+        mediaPlayer = null
+        isAudioPlaying = false
+        binding.fabPlayAudio.text = "音声を再生"
+        binding.fabPlayAudio.setIconResource(android.R.drawable.ic_media_play)
+    }
+
     private fun formatRecordTitle(record: Record): String {
+        val date = record.createdAt ?: Date(record.startTime)
         val dateFormatter = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault())
-        val date = Date(record.startTime)
         return "記録: ${dateFormatter.format(date)}"
     }
 
     override fun onSupportNavigateUp(): Boolean {
         finish()
         return true
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        mediaPlayer?.release()
+        mediaPlayer = null
     }
 }

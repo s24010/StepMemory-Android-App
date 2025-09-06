@@ -7,9 +7,9 @@ plugins {
 }
 
 android {
-    namespace = "com.kic.stepmemory" // あなたのapplicationIdと同じ値を設定
-
+    namespace = "com.kic.stepmemory"
     compileSdk = 35
+
     defaultConfig {
         applicationId = "com.kic.stepmemory"
         minSdk = 29
@@ -18,6 +18,7 @@ android {
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+
     buildTypes {
         release {
             isDebuggable = false
@@ -43,26 +44,29 @@ dependencies {
 
     implementation(platform("com.google.firebase:firebase-bom:32.8.0"))
     implementation("com.google.firebase:firebase-firestore-ktx")
+    // ★★★ Firebase Storage KTXライブラリを追加 ★★★
+    implementation("com.google.firebase:firebase-storage-ktx")
     implementation("com.google.code.gson:gson:2.10.1")
 
-    // Google Maps SDK for Android (道の表示に必要)
+    // Google Maps SDK
     implementation("com.google.android.gms:play-services-maps:18.2.0")
+    implementation("com.google.maps.android:maps-utils-ktx:3.4.0")
 
-    // ★★★ Google Location Services API (FusedLocationProviderClientなどに必要) を追加 ★★★
-    implementation("com.google.android.gms:play-services-location:21.0.1") // 最新バージョンはGoogle Developersサイトで確認
+    // Google Location Services API
+    implementation("com.google.android.gms:play-services-location:21.0.1")
 
-    // Coroutines (Kotlinの非同期処理を簡潔に書くため)
+    // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-    // Lifecycle KTX (ViewModel, LiveDataなど、Androidアーキテクチャコンポーネント)
+    // Lifecycle KTX
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
-    // Activity KTX (Activityの拡張関数など)
+    // Activity KTX
     implementation("androidx.activity:activity-ktx:1.9.0")
-    // Fragment KTX (Fragmentの拡張関数など)
+    // Fragment KTX
     implementation("androidx.fragment:fragment-ktx:1.6.2")
     implementation(libs.androidx.activity)
 
-    // テスト用ライブラリ
+    // Test libraries
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
