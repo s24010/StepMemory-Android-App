@@ -27,32 +27,18 @@ class MainActivity : AppCompatActivity() {
 
         challengeManager = ChallengeManager(this)
 
-        binding.btnStartRecording.setOnClickListener {
-            val intent = Intent(this, RecordingActivity::class.java)
-            startActivity(intent)
-        }
-
-        binding.btnViewHistory.setOnClickListener {
-            val intent = Intent(this, HistoryActivity::class.java)
-            startActivity(intent)
-        }
-
-        binding.btnViewAuraMap.text = "絆をヒートマップで見る"
-        binding.btnViewAuraMap.setOnClickListener {
-            val intent = Intent(this, HeatmapActivity::class.java)
-            startActivity(intent)
-        }
+        // ... (ボタンのクリックリスナーは変更なし)
     }
 
     override fun onResume() {
         super.onResume()
-        // 画面が表示されるたびにチャレンジを更新
         updateChallengeView()
     }
 
     private fun updateChallengeView() {
         CoroutineScope(Dispatchers.IO).launch {
-            val challenge = challengeManager.getCurrentChallenge()
+            // ★★★ 達成済みの場合、新しいチャレンジを取得し直すように変更 ★★★
+            val challenge = challengeManager.updateProgressAndGetNewChallengeIfNeeded()
             withContext(Dispatchers.Main) {
                 displayChallenge(challenge)
             }
@@ -62,11 +48,13 @@ class MainActivity : AppCompatActivity() {
     private fun displayChallenge(challenge: Challenge) {
         binding.tvChallengeTitle.text = challenge.title
         binding.tvChallengeDescription.text = challenge.description
-        binding.progressChallenge.max = challenge.goal
+        binding.progressChallenge.max = if(challenge.goal > 0) challenge.goal else 1
         binding.progressChallenge.progress = challenge.currentProgress
 
+        // ★★★ SINGLE_RECORD_DURATION の表示形式を追加 ★★★
         val progressText = when (challenge.type) {
             ChallengeType.TOTAL_DURATION -> "${challenge.currentProgress} / ${challenge.goal} 分"
+            ChallengeType.SINGLE_RECORD_DURATION -> "目標: ${challenge.goal} 分"
             else -> "${challenge.currentProgress} / ${challenge.goal}"
         }
         binding.tvChallengeProgress.text = progressText

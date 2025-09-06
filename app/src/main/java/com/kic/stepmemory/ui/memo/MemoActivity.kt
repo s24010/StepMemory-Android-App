@@ -121,7 +121,7 @@ class MemoActivity : AppCompatActivity() {
 
                 // チャレンジの進捗を更新
                 CoroutineScope(Dispatchers.IO).launch {
-                    challengeManager.updateProgress()
+                    challengeManager.updateProgressAndGetNewChallengeIfNeeded()
                 }
 
                 val intent = Intent(this, MainActivity::class.java)
