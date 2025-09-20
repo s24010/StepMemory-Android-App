@@ -20,6 +20,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var challengeManager: ChallengeManager
 
+    // ★★★ マイク権限に関するコードをここからすべて削除 ★★★
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -27,8 +29,26 @@ class MainActivity : AppCompatActivity() {
 
         challengeManager = ChallengeManager(this)
 
-        // ... (ボタンのクリックリスナーは変更なし)
+        // ★★★ 権限要求の呼び出しを削除 ★★★
+
+        binding.btnStartRecording.setOnClickListener {
+            val intent = Intent(this, RecordingActivity::class.java)
+            startActivity(intent)
+        }
+
+        binding.btnViewHistory.setOnClickListener {
+            val intent = Intent(this, HistoryActivity::class.java)
+            startActivity(intent)
+        }
+
+        binding.btnViewAuraMap.text = "絆をヒートマップで見る"
+        binding.btnViewAuraMap.setOnClickListener {
+            val intent = Intent(this, HeatmapActivity::class.java)
+            startActivity(intent)
+        }
     }
+
+    // ★★★ onRequestPermissionsResult と checkAndRequestAudioPermission 関数を削除 ★★★
 
     override fun onResume() {
         super.onResume()
@@ -37,7 +57,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateChallengeView() {
         CoroutineScope(Dispatchers.IO).launch {
-            // ★★★ 達成済みの場合、新しいチャレンジを取得し直すように変更 ★★★
             val challenge = challengeManager.updateProgressAndGetNewChallengeIfNeeded()
             withContext(Dispatchers.Main) {
                 displayChallenge(challenge)
@@ -51,7 +70,6 @@ class MainActivity : AppCompatActivity() {
         binding.progressChallenge.max = if(challenge.goal > 0) challenge.goal else 1
         binding.progressChallenge.progress = challenge.currentProgress
 
-        // ★★★ SINGLE_RECORD_DURATION の表示形式を追加 ★★★
         val progressText = when (challenge.type) {
             ChallengeType.TOTAL_DURATION -> "${challenge.currentProgress} / ${challenge.goal} 分"
             ChallengeType.SINGLE_RECORD_DURATION -> "目標: ${challenge.goal} 分"

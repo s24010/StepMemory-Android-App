@@ -34,6 +34,8 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
     private lateinit var googleMap: GoogleMap
     private lateinit var firestore: FirebaseFirestore
 
+    private val ABSOLUTE_MAX_SCORE = 255.0
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityHeatmapBinding.inflate(layoutInflater)
@@ -70,13 +72,11 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
                     return@launch
                 }
 
-                // ★★★ 愛着度の計算結果を、データ本体と最初の座標のペアで受け取るように変更 ★★★
                 val (weightedData, firstLatLng) = calculatePlaceAttachment(records, landmarks)
 
                 withContext(Dispatchers.Main) {
                     if (weightedData.isNotEmpty() && firstLatLng != null) {
                         drawHeatmap(weightedData)
-                        // ★★★ 受け取った最初の座標にカメラを移動 ★★★
                         googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(firstLatLng, 13f))
                     }
                     binding.progressBarHeatmap.visibility = View.GONE
@@ -91,7 +91,6 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
-    // ★★★ 戻り値を、ヒートマップデータと最初の座標のペア (`Pair`) に変更 ★★★
     private fun calculatePlaceAttachment(records: List<Record>, landmarks: List<Landmark>): Pair<List<WeightedLatLng>, LatLng?> {
         val attachmentScores = mutableMapOf<LatLng, Double>()
         val groupingRadius = 50.0
@@ -100,30 +99,28 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
             val point = record.pathPoints.firstOrNull()?.let { LatLng(it.latitude, it.longitude) } ?: return@forEach
             val durationMinutes = record.durationMs?.let { TimeUnit.MILLISECONDS.toMinutes(it) } ?: 0L
             val key = findNearbyKey(point, attachmentScores.keys, groupingRadius) ?: point
-            val currentScore = attachmentScores.getOrDefault(key, 0.0)
+            val currentScore = if (attachmentScores.containsKey(key)) attachmentScores[key]!! else 0.0
             attachmentScores[key] = currentScore + 5.0 + (durationMinutes * 0.1)
         }
 
         landmarks.forEach { landmark ->
             val point = LatLng(landmark.latitude, landmark.longitude)
             val key = findNearbyKey(point, attachmentScores.keys, groupingRadius) ?: point
-            val currentScore = attachmentScores.getOrDefault(key, 0.0)
+            val currentScore = if (attachmentScores.containsKey(key)) attachmentScores[key]!! else 0.0
             attachmentScores[key] = currentScore + 30.0
         }
         records.filter { !it.memo.isNullOrBlank() }.forEach { record ->
             val point = record.pathPoints.firstOrNull()?.let { LatLng(it.latitude, it.longitude) } ?: return@forEach
             val key = findNearbyKey(point, attachmentScores.keys, groupingRadius) ?: point
-            val currentScore = attachmentScores.getOrDefault(key, 0.0)
+            val currentScore = if (attachmentScores.containsKey(key)) attachmentScores[key]!! else 0.0
             attachmentScores[key] = currentScore + 10.0
         }
 
-        val maxScore = attachmentScores.values.maxOrNull() ?: 1.0
         val weightedList = attachmentScores.map { (latLng, score) ->
-            val intensity = min(score / maxScore, 1.0)
+            val intensity = min(score / ABSOLUTE_MAX_SCORE, 1.0)
             WeightedLatLng(latLng, intensity)
         }
 
-        // ★★★ 計算結果のリストと、最初の座標をペアで返す ★★★
         return Pair(weightedList, attachmentScores.keys.firstOrNull())
     }
 
@@ -138,11 +135,18 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
     private fun drawHeatmap(data: List<WeightedLatLng>) {
         if (data.isEmpty()) return
 
+        // ★★★ ヒートマップのグラデーションを4段階に変更 ★★★
         val colors = intArrayOf(
-            Color.rgb(102, 225, 0),
-            Color.rgb(255, 0, 0)
+            Color.BLUE,              // 青
+            Color.GREEN,             // 緑
+            Color.YELLOW,            // 黄
+            Color.RED                // 赤
         )
-        val startPoints = floatArrayOf(0.2f, 1f)
+
+        // ★★★ 各色が担当する範囲を定義 ★★★
+        // 0.2(20%)で青、0.5(50%)で緑、0.8(80%)で黄、1.0(100%)で赤になる
+        val startPoints = floatArrayOf(0.2f, 0.5f, 0.8f, 1.0f)
+
         val gradient = Gradient(colors, startPoints)
 
         val provider = HeatmapTileProvider.Builder()
