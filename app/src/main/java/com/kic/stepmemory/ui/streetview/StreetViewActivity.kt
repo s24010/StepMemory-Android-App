@@ -14,12 +14,11 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.toObject
 import com.kic.stepmemory.R
 import com.kic.stepmemory.data.Record
-import com.kic.stepmemory.databinding.ActivityStreetViewBinding // ★ ViewBindingをインポート
-import java.util.Date
+import com.kic.stepmemory.databinding.ActivityStreetViewBinding
 
 class StreetViewActivity : AppCompatActivity(), OnStreetViewPanoramaReadyCallback {
 
-    private lateinit var binding: ActivityStreetViewBinding // ★ ViewBindingのインスタンス
+    private lateinit var binding: ActivityStreetViewBinding
     private var recordId: String? = null
     private lateinit var firestore: FirebaseFirestore
     private lateinit var panorama: StreetViewPanorama
@@ -29,7 +28,6 @@ class StreetViewActivity : AppCompatActivity(), OnStreetViewPanoramaReadyCallbac
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // ★ ViewBinding を使用するように変更
         binding = ActivityStreetViewBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -66,10 +64,10 @@ class StreetViewActivity : AppCompatActivity(), OnStreetViewPanoramaReadyCallbac
 
     override fun onStreetViewPanoramaReady(panorama: StreetViewPanorama) {
         this.panorama = panorama
-        // ★ ユーザーによる移動やズームを無効化
-        panorama.isUserNavigationEnabled = false
-        panorama.isZoomGesturesEnabled = false
-        panorama.isPanningGesturesEnabled = false
+        // ユーザーによる自由な操作を許可
+        panorama.isUserNavigationEnabled = true
+        panorama.isZoomGesturesEnabled = true
+        panorama.isPanningGesturesEnabled = true
 
         recordId?.let { id ->
             fetchRecordAndSetupPanorama(id)
@@ -94,7 +92,6 @@ class StreetViewActivity : AppCompatActivity(), OnStreetViewPanoramaReadyCallbac
             }
     }
 
-    // ★ ストリートビューの位置と向きを更新する関数
     private fun updatePanoramaPosition() {
         if (pathPoints.isNotEmpty()) {
             val currentPosition = pathPoints[currentIndex]
@@ -112,7 +109,6 @@ class StreetViewActivity : AppCompatActivity(), OnStreetViewPanoramaReadyCallbac
         }
     }
 
-    // ★ 2点間の角度を計算するヘルパー関数
     private fun calculateBearing(start: LatLng, end: LatLng): Float {
         val startLocation = Location("").apply {
             latitude = start.latitude
