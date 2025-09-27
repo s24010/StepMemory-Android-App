@@ -20,9 +20,28 @@ android {
     }
 
     buildTypes {
-        release {
-            isDebuggable = false
+        getByName("release") {
+            isMinifyEnabled = false // proguard-rules.pro を使う場合は true にする
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // ALL_FEATURES_UNLOCKED を false に設定
+            buildConfigField("boolean", "ALL_FEATURES_UNLOCKED", "false")
         }
+        getByName("debug") {
+            // ALL_FEATURES_UNLOCKED を false に設定
+            buildConfigField("boolean", "ALL_FEATURES_UNLOCKED", "false")
+            isDebuggable = true // isDebuggable は debug ビルドタイプではデフォルトで true
+        }
+        // ▼▼▼ 新しいビルドタイプ debugUnlocked を追加 ▼▼▼
+        create("debugUnlocked") {
+            initWith(buildTypes.getByName("debug")) // debug ビルドタイプの設定を継承
+            // buildConfigField を通じて BuildConfig に定数を追加
+            // このビルドタイプでは全機能アンロックを true にする
+            buildConfigField("boolean", "ALL_FEATURES_UNLOCKED", "true")
+            // 必要に応じて、applicationIdSuffix を追加してデバッグ版と区別できるようにする
+            //例: applicationIdSuffix = ".debugunlocked"
+            // isDebuggable = true // initWith debug で継承される
+        }
+        // ▲▲▲ ここまで追加 ▲▲▲
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
@@ -33,6 +52,7 @@ android {
     }
     buildFeatures {
         viewBinding = true
+        buildConfig = true // BuildConfig を使用するために必要 (通常デフォルトでtrue)
     }
 }
 

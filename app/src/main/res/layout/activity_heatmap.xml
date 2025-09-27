@@ -16,6 +16,67 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
+    <!-- ▼▼▼ ヒートマップON/OFFスイッチ ▼▼▼ -->
+    <com.google.android.material.switchmaterial.SwitchMaterial
+        android:id="@+id/switch_heatmap_toggle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="16dp"
+        android:text="ヒートマップ表示"
+        android:checked="true"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <HorizontalScrollView
+        android:id="@+id/scroll_view_filters"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:scrollbars="none"
+        app:layout_constraintTop_toBottomOf="@id/switch_heatmap_toggle"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:clipToPadding="false">
+
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chip_group_filters"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:singleLine="true">
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_filter_rainy"
+                style="@style/Widget.MaterialComponents.Chip.Filter"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="雨の日"
+                android:visibility="gone"
+                tools:visibility="visible"/>
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_filter_night"
+                style="@style/Widget.MaterialComponents.Chip.Filter"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="夜の散歩"
+                android:visibility="gone"
+                tools:visibility="visible"/>
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_filter_weekend"
+                style="@style/Widget.MaterialComponents.Chip.Filter"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="週末"
+                android:visibility="gone"
+                tools:visibility="visible"/>
+        </com.google.android.material.chip.ChipGroup>
+    </HorizontalScrollView>
+    <!-- ▲▲▲ フィルター選択UIここまで ▲▲▲ -->
+
     <ProgressBar
         android:id="@+id/progress_bar_heatmap"
         android:layout_width="wrap_content"

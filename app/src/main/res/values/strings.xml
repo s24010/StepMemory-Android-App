@@ -1,3 +1,14 @@
 <resources>
     <string name="app_name">StepMemory</string>
+
+    <string-array name="weather_options">
+        <item>天気を選択してください</item>
+        <item>晴れ</item>
+        <item>曇り</item>
+        <item>雨</item>
+        <item>雪</item>
+        <item>その他</item>
+    </string-array>
+
+    <string name="weather_rainy_value">雨</string>
 </resources>

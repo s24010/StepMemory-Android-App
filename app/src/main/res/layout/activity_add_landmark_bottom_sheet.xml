@@ -54,20 +54,57 @@
         android:layout_marginTop="16dp"
         android:layout_marginBottom="8dp"/>
 
-    <com.google.android.material.chip.ChipGroup
-        android:id="@+id/chip_group_icons"
+    <HorizontalScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        app:singleSelection="true">
+        android:scrollbars="none">
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chip_group_icons"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:singleSelection="true">
 
-        <com.google.android.material.chip.Chip style="@style/Widget.MaterialComponents.Chip.Choice" android:id="@+id/chip_pin" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="📍 思い出"/>
-        <com.google.android.material.chip.Chip style="@style/Widget.MaterialComponents.Chip.Choice" android:id="@+id/chip_food" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="🍽️ 食事"/>
-        <com.google.android.material.chip.Chip style="@style/Widget.MaterialComponents.Chip.Choice" android:id="@+id/chip_scenery" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="🏞️ 風景"/>
-        <com.google.android.material.chip.Chip style="@style/Widget.MaterialComponents.Chip.Choice" android:id="@+id/chip_onsen" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="♨️ 温泉"/>
-        <com.google.android.material.chip.Chip style="@style/Widget.MaterialComponents.Chip.Choice" android:id="@+id/chip_shopping" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="🛍️ 買物"/>
-        <com.google.android.material.chip.Chip style="@style/Widget.MaterialComponents.Chip.Choice" android:id="@+id/chip_sightseeing" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="🏰 観光"/>
+            <com.google.android.material.chip.Chip style="@style/Widget.MaterialComponents.Chip.Choice" android:id="@+id/chip_pin" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="📍 思い出"/>
+            <com.google.android.material.chip.Chip style="@style/Widget.MaterialComponents.Chip.Choice" android:id="@+id/chip_food" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="🍽️ 食事"/>
+            <com.google.android.material.chip.Chip style="@style/Widget.MaterialComponents.Chip.Choice" android:id="@+id/chip_scenery" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="🏞️ 風景"/>
+            <com.google.android.material.chip.Chip style="@style/Widget.MaterialComponents.Chip.Choice" android:id="@+id/chip_onsen" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="♨️ 温泉"/>
+            <com.google.android.material.chip.Chip style="@style/Widget.MaterialComponents.Chip.Choice" android:id="@+id/chip_shopping" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="🛍️ 買物"/>
+            <com.google.android.material.chip.Chip style="@style/Widget.MaterialComponents.Chip.Choice" android:id="@+id/chip_sightseeing" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="🏰 観光"/>
 
-    </com.google.android.material.chip.ChipGroup>
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_bronze_pin"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🥉 ブロンズ"
+                android:visibility="gone" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_silver_pin"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🥈 シルバー"
+                android:visibility="gone" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_gold_pin"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🥇 ゴールド"
+                android:visibility="gone" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/chip_moon_icon"
+                style="@style/Widget.MaterialComponents.Chip.Choice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🌙 月"
+                android:visibility="gone" />
+
+        </com.google.android.material.chip.ChipGroup>
+    </HorizontalScrollView>
 
     <Button
         android:id="@+id/btn_save_landmark"

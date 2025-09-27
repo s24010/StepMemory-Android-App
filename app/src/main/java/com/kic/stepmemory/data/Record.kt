@@ -13,8 +13,8 @@ data class Record(
     var durationMs: Long? = null,
     var pathPoints: List<GeoPoint> = listOf(),
     var memo: String? = null,
-    var audioUrl: String? = null,
-    // ★★★ データ型を Long? から Date? に変更 ★★★
+    var audioPins: List<AudioPin> = listOf(),
+    var weather: String? = null, // <<< 追加
     var createdAt: Date? = null,
     var updatedAt: Date? = null
 ){

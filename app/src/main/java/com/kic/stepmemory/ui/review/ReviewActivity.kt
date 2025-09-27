@@ -1,26 +1,25 @@
 package com.kic.stepmemory.ui.review
 
+import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
 import android.media.MediaPlayer
 import android.os.Bundle
-import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
-import com.google.android.gms.maps.model.BitmapDescriptorFactory
-import com.google.android.gms.maps.model.LatLng
-import com.google.android.gms.maps.model.LatLngBounds
-import com.google.android.gms.maps.model.Marker
-import com.google.android.gms.maps.model.MarkerOptions
-import com.google.android.gms.maps.model.PolylineOptions
+import com.google.android.gms.maps.model.*
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.toObject
 import com.kic.stepmemory.R
+import com.kic.stepmemory.data.AudioPin
 import com.kic.stepmemory.data.Landmark
 import com.kic.stepmemory.data.Record
 import com.kic.stepmemory.databinding.ActivityReviewBinding
@@ -28,10 +27,9 @@ import com.kic.stepmemory.ui.landmark.AddLandmarkBottomSheet
 import com.kic.stepmemory.ui.streetview.StreetViewActivity
 import java.io.IOException
 import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.util.*
 
-class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
+class ReviewActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMarkerClickListener {
 
     private lateinit var binding: ActivityReviewBinding
     private lateinit var googleMap: GoogleMap
@@ -43,7 +41,6 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
     private var placementMarker: Marker? = null
 
     private var mediaPlayer: MediaPlayer? = null
-    private var isAudioPlaying = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,7 +51,6 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
         supportActionBar?.title = "記録の振り返り"
 
         firestore = FirebaseFirestore.getInstance()
-
         recordId = intent.getStringExtra("RECORD_ID")
 
         val mapFragment = supportFragmentManager.findFragmentById(R.id.map_review) as SupportMapFragment
@@ -75,16 +71,6 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
                 showMemoDialog(record.name, record.memo)
             } ?: run {
                 Toast.makeText(this, "メモが読み込まれていません。", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        binding.fabPlayAudio.setOnClickListener {
-            if (isAudioPlaying) {
-                stopAudio()
-            } else {
-                currentRecord?.audioUrl?.let { url ->
-                    playAudio(url)
-                }
             }
         }
 
@@ -118,6 +104,7 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
     override fun onMapReady(map: GoogleMap) {
         googleMap = map
         googleMap.uiSettings.isZoomControlsEnabled = true
+        googleMap.setOnMarkerClickListener(this)
 
         recordId?.let { id ->
             fetchRecordFromFirestore(id)
@@ -139,9 +126,15 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
                     displayRecordOnMap(it)
                     supportActionBar?.title = it.name ?: formatRecordTitle(it)
 
-                    if (!it.audioUrl.isNullOrEmpty()) {
-                        binding.fabPlayAudio.visibility = View.VISIBLE
+                    // ▼▼▼ このログを追加 ▼▼▼
+                    android.util.Log.d("ReviewActivity", "Fetched audioPins size: ${it.audioPins.size}")
+                    for (pin in it.audioPins) {
+                        android.util.Log.d("ReviewActivity", "AudioPin: URL=${pin.audioUrl}, Lat=${pin.latitude}, Lng=${pin.longitude}")
                     }
+                    // ▲▲▲ ここまで追加 ▲▲▲
+
+
+                    drawAudioPinsOnMap(it.audioPins)
                 } ?: run {
                     Toast.makeText(this, "記録が見つかりませんでした。", Toast.LENGTH_LONG).show()
                     finish()
@@ -154,14 +147,99 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
             }
     }
 
+    override fun onMarkerClick(marker: Marker): Boolean {
+        (marker.tag as? String)?.let { audioUrl ->
+            playAudio(audioUrl)
+            return true
+        }
+        return false
+    }
+
+    // Helper method to convert vector drawable to BitmapDescriptor
+    private fun getBitmapDescriptorFromVector(context: Context, vectorResId: Int, scaleFactor: Float = 1.0f): BitmapDescriptor? {
+        return ContextCompat.getDrawable(context, vectorResId)?.let { vectorDrawable ->
+            // 元のサイズにスケールファクターを適用
+            val width = (vectorDrawable.intrinsicWidth * scaleFactor).toInt()
+            val height = (vectorDrawable.intrinsicHeight * scaleFactor).toInt()
+
+            // 幅や高さが0以下にならないようにガード
+            if (width <= 0 || height <= 0) {
+                android.util.Log.e("ReviewActivity", "Failed to scale vector drawable, width or height is zero or negative.")
+                return BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED) // フォールバック
+            }
+
+            vectorDrawable.setBounds(0, 0, width, height)
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            vectorDrawable.draw(canvas)
+            BitmapDescriptorFactory.fromBitmap(bitmap)
+        }
+    }
+
+    private fun drawAudioPinsOnMap(audioPins: List<AudioPin>) {
+        android.util.Log.d("ReviewActivity", "drawAudioPinsOnMap called with ${audioPins.size} pins.")
+        if (audioPins.isEmpty()) {
+            android.util.Log.d("ReviewActivity", "audioPins list is empty, skipping drawing.")
+            return
+        }
+        audioPins.forEach { pin ->
+            android.util.Log.d("ReviewActivity", "Drawing pin at Lat: ${pin.latitude}, Lng: ${pin.longitude}")
+            val position = LatLng(pin.latitude, pin.longitude)
+            // スケールファクターを指定 (例: 1.5倍)
+            val markerIcon = getBitmapDescriptorFromVector(this, R.drawable.ic_audio_pin, 1.5f)
+            if (markerIcon == null) {
+                android.util.Log.e("ReviewActivity", "Failed to get marker icon for audio pin!")
+            }
+            val marker = googleMap.addMarker(
+                MarkerOptions()
+                    .position(position)
+                    .title("音声メモ")
+                    .snippet("タップして再生")
+                    .icon(markerIcon ?: BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED))
+            )
+            marker?.tag = pin.audioUrl
+        }
+    }
+
+
+    private fun playAudio(url: String) {
+        stopAudio()
+
+        mediaPlayer = MediaPlayer().apply {
+            try {
+                setDataSource(url)
+                prepareAsync()
+                setOnPreparedListener {
+                    start()
+                    Toast.makeText(this@ReviewActivity, "音声を再生中...", Toast.LENGTH_SHORT).show()
+                }
+                setOnCompletionListener {
+                    stopAudio()
+                }
+                setOnErrorListener { _, _, _ ->
+                    Toast.makeText(this@ReviewActivity, "音声の再生に失敗しました。", Toast.LENGTH_SHORT).show()
+                    stopAudio()
+                    true
+                }
+            } catch (e: IOException) {
+                e.printStackTrace()
+                Toast.makeText(this@ReviewActivity, "音声ファイルが見つかりません。", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun stopAudio() {
+        mediaPlayer?.release()
+        mediaPlayer = null
+    }
+
     private fun saveLandmarkToFirestore(landmark: Landmark) {
         firestore.collection("landmarks")
             .add(landmark)
             .addOnSuccessListener {
                 Toast.makeText(this, "ランドマークを登録しました！", Toast.LENGTH_SHORT).show()
-                googleMap.clear()
-                displayRecordOnMap(currentRecord!!)
-                fetchAndDrawLandmarks()
+                googleMap.clear() // マップをクリア
+                fetchRecordFromFirestore(recordId!!) // Firestoreから記録を再取得して再描画
             }
             .addOnFailureListener { e ->
                 Toast.makeText(this, "ランドマークの登録に失敗しました: ${e.message}", Toast.LENGTH_LONG).show()
@@ -180,21 +258,26 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
                                 .position(latLng)
                                 .title(it.title)
                                 .snippet(it.episode)
-                                .icon(BitmapDescriptorFactory.defaultMarker(getMarkerColor(it.iconType)))
+                                .icon(getMarkerIcon(it.iconType))
                         )
                     }
                 }
             }
     }
 
-    private fun getMarkerColor(iconType: String): Float {
+    private fun getMarkerIcon(iconType: String): BitmapDescriptor {
+        // 必要であれば、他のアイコンにもscaleFactorを適用
         return when (iconType) {
-            "FOOD" -> BitmapDescriptorFactory.HUE_ORANGE
-            "SCENERY" -> BitmapDescriptorFactory.HUE_GREEN
-            "ONSEN" -> BitmapDescriptorFactory.HUE_CYAN
-            "SHOPPING" -> BitmapDescriptorFactory.HUE_MAGENTA
-            "SIGHTSEEING" -> BitmapDescriptorFactory.HUE_YELLOW
-            else -> BitmapDescriptorFactory.HUE_RED
+            "BRONZE_PIN" -> getBitmapDescriptorFromVector(this, R.drawable.ic_landmark_bronze_pin, 1.0f) ?: BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)
+            "SILVER_PIN" -> getBitmapDescriptorFromVector(this, R.drawable.ic_landmark_silver_pin, 1.0f) ?: BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)
+            "GOLD_PIN" -> getBitmapDescriptorFromVector(this, R.drawable.ic_landmark_gold_pin, 1.0f) ?: BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)
+            "MOON_ICON" -> getBitmapDescriptorFromVector(this, R.drawable.ic_landmark_moon, 1.0f) ?: BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)
+            "FOOD" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE)
+            "SCENERY" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)
+            "ONSEN" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_CYAN)
+            "SHOPPING" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA)
+            "SIGHTSEEING" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_YELLOW)
+            else -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)
         }
     }
 
@@ -232,40 +315,6 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
             .setMessage(dialogMessage)
             .setPositiveButton("閉じる", null)
             .show()
-    }
-
-    private fun playAudio(url: String) {
-        mediaPlayer = MediaPlayer().apply {
-            try {
-                setDataSource(url)
-                prepareAsync()
-                setOnPreparedListener {
-                    start()
-                    isAudioPlaying = true
-                    binding.fabPlayAudio.text = "停止"
-                    binding.fabPlayAudio.setIconResource(android.R.drawable.ic_media_pause)
-                }
-                setOnCompletionListener {
-                    stopAudio()
-                }
-                setOnErrorListener { _, _, _ ->
-                    Toast.makeText(this@ReviewActivity, "音声の再生に失敗しました。", Toast.LENGTH_SHORT).show()
-                    stopAudio()
-                    true
-                }
-            } catch (e: IOException) {
-                e.printStackTrace()
-                Toast.makeText(this@ReviewActivity, "音声ファイルが見つかりません。", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    private fun stopAudio() {
-        mediaPlayer?.release()
-        mediaPlayer = null
-        isAudioPlaying = false
-        binding.fabPlayAudio.text = "音声を再生"
-        binding.fabPlayAudio.setIconResource(android.R.drawable.ic_media_play)
     }
 
     private fun formatRecordTitle(record: Record): String {

@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+import com.kic.stepmemory.challenge.UnlockedIconManager
 import com.kic.stepmemory.data.Landmark
 import com.kic.stepmemory.databinding.ActivityAddLandmarkBottomSheetBinding
 import java.util.Date
@@ -18,9 +19,11 @@ class AddLandmarkBottomSheet(
 
     private var _binding: ActivityAddLandmarkBottomSheetBinding? = null
     private val binding get() = _binding!!
+    private lateinit var unlockedIconManager: UnlockedIconManager
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = ActivityAddLandmarkBottomSheetBinding.inflate(inflater, container, false)
+        unlockedIconManager = UnlockedIconManager(requireContext())
         return binding.root
     }
 
@@ -28,6 +31,20 @@ class AddLandmarkBottomSheet(
         super.onViewCreated(view, savedInstanceState)
 
         binding.chipPin.isChecked = true
+
+        // アンロック状態に応じて特別なアイコンの表示を切り替え
+        if (unlockedIconManager.isIconUnlocked("bronze_pin")) {
+            binding.chipBronzePin.visibility = View.VISIBLE
+        }
+        if (unlockedIconManager.isIconUnlocked("silver_pin")) {
+            binding.chipSilverPin.visibility = View.VISIBLE
+        }
+        if (unlockedIconManager.isIconUnlocked("gold_pin")) {
+            binding.chipGoldPin.visibility = View.VISIBLE
+        }
+        if (unlockedIconManager.isIconUnlocked("moon_icon")) {
+            binding.chipMoonIcon.visibility = View.VISIBLE
+        }
 
         binding.btnSaveLandmark.setOnClickListener {
             val title = binding.etLandmarkTitle.text.toString().trim()
@@ -45,7 +62,6 @@ class AddLandmarkBottomSheet(
                 iconType = iconType,
                 latitude = latitude,
                 longitude = longitude,
-                // ★★★ System.currentTimeMillis() から Date() に変更 ★★★
                 createdAt = Date()
             )
             onSave(landmark)
@@ -60,6 +76,12 @@ class AddLandmarkBottomSheet(
             binding.chipOnsen.id -> "ONSEN"
             binding.chipShopping.id -> "SHOPPING"
             binding.chipSightseeing.id -> "SIGHTSEEING"
+
+            binding.chipBronzePin.id -> "BRONZE_PIN"
+            binding.chipSilverPin.id -> "SILVER_PIN"
+            binding.chipGoldPin.id -> "GOLD_PIN"
+            binding.chipMoonIcon.id -> "MOON_ICON"
+
             else -> "PIN"
         }
     }

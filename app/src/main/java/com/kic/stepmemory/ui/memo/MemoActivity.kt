@@ -5,8 +5,12 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.kic.stepmemory.MainActivity
+import com.kic.stepmemory.R // Rクラスをインポート
 import com.kic.stepmemory.challenge.ChallengeManager
+import com.kic.stepmemory.data.AudioPin
 import com.kic.stepmemory.data.GeoPoint
 import com.kic.stepmemory.data.Record
 import com.kic.stepmemory.databinding.ActivityMemoBinding
@@ -15,6 +19,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.util.Date
+import android.widget.ArrayAdapter // ArrayAdapterをインポート
 
 class MemoActivity : AppCompatActivity() {
 
@@ -26,7 +31,7 @@ class MemoActivity : AppCompatActivity() {
     private var recordEndTime: Long = 0L
     private var recordDurationMs: Long = 0L
 
-    private var uploadedAudioUrl: String? = null
+    private var audioPins: List<AudioPin> = listOf()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,7 +47,22 @@ class MemoActivity : AppCompatActivity() {
         recordStartTime = intent.getLongExtra("RECORD_START_TIME", 0L)
         recordEndTime = intent.getLongExtra("RECORD_END_TIME", 0L)
         recordDurationMs = intent.getLongExtra("RECORD_DURATION_MS", 0L)
-        uploadedAudioUrl = intent.getStringExtra("AUDIO_URL")
+        val audioPinsJson = intent.getStringExtra("AUDIO_PINS_JSON")
+        if (audioPinsJson != null) {
+            val type = object : TypeToken<List<AudioPin>>() {}.type
+            audioPins = Gson().fromJson(audioPinsJson, type)
+        }
+
+        // ▼▼▼ Spinner の設定を追加 ▼▼▼
+        ArrayAdapter.createFromResource(
+            this,
+            R.array.weather_options, // strings.xmlで定義した配列
+            android.R.layout.simple_spinner_item
+        ).also { adapter ->
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            binding.spinnerWeather.adapter = adapter
+        }
+        // ▲▲▲ Spinner の設定ここまで ▲▲▲
 
         binding.btnSaveMemo.setOnClickListener {
             saveRecordToFirestore()
@@ -52,6 +72,16 @@ class MemoActivity : AppCompatActivity() {
     private fun saveRecordToFirestore() {
         val recordName = binding.etRecordName.text.toString().trim()
         val memoContent = binding.etMemoContent.text.toString().trim()
+
+        // ▼▼▼ 天気情報の取得 ▼▼▼
+        val selectedWeatherPosition = binding.spinnerWeather.selectedItemPosition
+        val selectedWeatherString = if (selectedWeatherPosition > 0) { // 0番目は「天気を選択してください」
+            binding.spinnerWeather.selectedItem.toString()
+        } else {
+            null // 何も選択されていないか、プレースホルダーが選択されている場合はnull
+        }
+        // ▲▲▲ 天気情報の取得ここまで ▲▲▲
+
 
         if (recordName.isEmpty() && memoContent.isEmpty()) {
             Toast.makeText(this, "記録名またはメモ内容を入力してください。", Toast.LENGTH_SHORT).show()
@@ -69,7 +99,8 @@ class MemoActivity : AppCompatActivity() {
             endTime = recordEndTime,
             durationMs = recordDurationMs,
             pathPoints = pathPoints,
-            audioUrl = uploadedAudioUrl,
+            audioPins = audioPins,
+            weather = selectedWeatherString, // 取得した天気情報をセット
             createdAt = Date(),
             updatedAt = Date()
         )
