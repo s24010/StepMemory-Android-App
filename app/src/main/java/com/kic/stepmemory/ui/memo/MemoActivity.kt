@@ -2,13 +2,15 @@ package com.kic.stepmemory.ui.memo
 
 import android.content.Intent
 import android.os.Bundle
+import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.kic.stepmemory.MainActivity
-import com.kic.stepmemory.R // Rクラスをインポート
+import com.kic.stepmemory.R
 import com.kic.stepmemory.challenge.ChallengeManager
 import com.kic.stepmemory.data.AudioPin
 import com.kic.stepmemory.data.GeoPoint
@@ -19,13 +21,14 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.util.Date
-import android.widget.ArrayAdapter // ArrayAdapterをインポート
 
 class MemoActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMemoBinding
     private lateinit var firestore: FirebaseFirestore
     private lateinit var challengeManager: ChallengeManager
+    private lateinit var auth: FirebaseAuth
+    private var userId: String? = null
 
     private var recordStartTime: Long = 0L
     private var recordEndTime: Long = 0L
@@ -39,7 +42,16 @@ class MemoActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         firestore = FirebaseFirestore.getInstance()
-        challengeManager = ChallengeManager(this)
+        auth = FirebaseAuth.getInstance()
+        userId = auth.currentUser?.uid
+
+        if (userId == null) {
+            Toast.makeText(this, "記録を保存するにはログインが必要です。", Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
+
+        challengeManager = ChallengeManager(this, userId!!)
 
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = "記録の詳細"
@@ -53,16 +65,14 @@ class MemoActivity : AppCompatActivity() {
             audioPins = Gson().fromJson(audioPinsJson, type)
         }
 
-        // ▼▼▼ Spinner の設定を追加 ▼▼▼
         ArrayAdapter.createFromResource(
             this,
-            R.array.weather_options, // strings.xmlで定義した配列
+            R.array.weather_options,
             android.R.layout.simple_spinner_item
         ).also { adapter ->
             adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             binding.spinnerWeather.adapter = adapter
         }
-        // ▲▲▲ Spinner の設定ここまで ▲▲▲
 
         binding.btnSaveMemo.setOnClickListener {
             saveRecordToFirestore()
@@ -70,18 +80,21 @@ class MemoActivity : AppCompatActivity() {
     }
 
     private fun saveRecordToFirestore() {
+        val currentUserId = userId
+        if (currentUserId == null) {
+            Toast.makeText(this, "ユーザー情報が取得できませんでした。再度お試しください。", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         val recordName = binding.etRecordName.text.toString().trim()
         val memoContent = binding.etMemoContent.text.toString().trim()
 
-        // ▼▼▼ 天気情報の取得 ▼▼▼
         val selectedWeatherPosition = binding.spinnerWeather.selectedItemPosition
-        val selectedWeatherString = if (selectedWeatherPosition > 0) { // 0番目は「天気を選択してください」
+        val selectedWeatherString = if (selectedWeatherPosition > 0) {
             binding.spinnerWeather.selectedItem.toString()
         } else {
-            null // 何も選択されていないか、プレースホルダーが選択されている場合はnull
+            null
         }
-        // ▲▲▲ 天気情報の取得ここまで ▲▲▲
-
 
         if (recordName.isEmpty() && memoContent.isEmpty()) {
             Toast.makeText(this, "記録名またはメモ内容を入力してください。", Toast.LENGTH_SHORT).show()
@@ -93,6 +106,7 @@ class MemoActivity : AppCompatActivity() {
         }
 
         val newRecord = Record(
+            userId = currentUserId,
             name = if (recordName.isNotEmpty()) recordName else null,
             memo = if (memoContent.isNotEmpty()) memoContent else null,
             startTime = recordStartTime,
@@ -100,7 +114,7 @@ class MemoActivity : AppCompatActivity() {
             durationMs = recordDurationMs,
             pathPoints = pathPoints,
             audioPins = audioPins,
-            weather = selectedWeatherString, // 取得した天気情報をセット
+            weather = selectedWeatherString,
             createdAt = Date(),
             updatedAt = Date()
         )

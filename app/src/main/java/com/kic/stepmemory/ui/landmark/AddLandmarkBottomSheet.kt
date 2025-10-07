@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+import com.google.firebase.auth.FirebaseAuth
 import com.kic.stepmemory.BuildConfig
 import com.kic.stepmemory.challenge.UnlockedIconManager
 import com.kic.stepmemory.data.Landmark
@@ -21,15 +22,29 @@ class AddLandmarkBottomSheet(
     private var _binding: ActivityAddLandmarkBottomSheetBinding? = null
     private val binding get() = _binding!!
     private lateinit var unlockedIconManager: UnlockedIconManager
+    private lateinit var auth: FirebaseAuth
+    private var userId: String? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = ActivityAddLandmarkBottomSheetBinding.inflate(inflater, container, false)
-        unlockedIconManager = UnlockedIconManager(requireContext())
+        
+        auth = FirebaseAuth.getInstance()
+        userId = auth.currentUser?.uid
+
+        if (userId == null) {
+            Toast.makeText(requireContext(), "ログインが必要です。", Toast.LENGTH_SHORT).show()
+            dismiss()
+        } else {
+            unlockedIconManager = UnlockedIconManager(requireContext(), userId!!)
+        }
+        
         return binding.root
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        
+        if (userId == null) return
 
         binding.chipPin.isChecked = true
 
@@ -58,6 +73,7 @@ class AddLandmarkBottomSheet(
             val iconType = getSelectedIconType()
 
             val landmark = Landmark(
+                userId = userId!!, // ユーザーIDを追加
                 title = title,
                 episode = episode,
                 iconType = iconType,
