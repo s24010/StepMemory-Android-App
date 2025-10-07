@@ -1,9 +1,12 @@
 package com.kic.stepmemory.ui.heatmap
 
+import android.animation.ValueAnimator
+import android.annotation.SuppressLint
 import android.graphics.Color
 import android.os.Bundle
 import android.util.Log
 import android.view.View
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.gms.maps.CameraUpdateFactory
@@ -11,9 +14,10 @@ import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.*
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
-import com.google.firebase.firestore.ktx.toObjects
+import com.google.firebase.firestore.toObjects
 import com.google.maps.android.heatmaps.Gradient
 import com.google.maps.android.heatmaps.HeatmapTileProvider
 import com.google.maps.android.heatmaps.WeightedLatLng
@@ -32,6 +36,7 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import kotlin.math.min
+import kotlin.math.sin
 
 class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
 
@@ -39,6 +44,7 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
     private lateinit var googleMap: GoogleMap
     private lateinit var firestore: FirebaseFirestore
     private lateinit var challengeManager: ChallengeManager
+    private lateinit var auth: FirebaseAuth
 
     private var currentHeatmapTileOverlay: TileOverlay? = null
     private val currentMapMarkers = mutableListOf<Marker>()
@@ -49,8 +55,14 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
     private var nightFilterActive = false
     private var weekendFilterActive = false
 
-    private val ABSOLUTE_MAX_SCORE = 255.0
-    private val WEATHER_RAINY = "雨"
+    private var userId: String? = null
+
+    private val absoluteMaxScore = 255.0
+    private val weatherRainy = "雨"
+
+    companion object {
+        private const val GROUPING_RADIUS = 50.0f
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -61,7 +73,16 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
         supportActionBar?.title = "マップ表示"
 
         firestore = FirebaseFirestore.getInstance()
-        challengeManager = ChallengeManager(this)
+        auth = FirebaseAuth.getInstance()
+        userId = auth.currentUser?.uid
+
+        // ユーザーIDがない場合は、ChallengeManagerを初期化せずに終了
+        if (userId == null) {
+            Toast.makeText(this, "表示するにはログインが必要です。", Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
+        challengeManager = ChallengeManager(this, userId!!)
 
         binding.switchHeatmapToggle.isChecked = heatmapMode
         binding.switchHeatmapToggle.setOnCheckedChangeListener { _, isChecked ->
@@ -74,45 +95,71 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
         mapFragment.getMapAsync(this)
     }
 
+    @SuppressLint("PotentialBehaviorOverride")
     override fun onMapReady(map: GoogleMap) {
         googleMap = map
         googleMap.uiSettings.isZoomControlsEnabled = true
         initializeFilterChips()
         loadAndDrawMapData()
+
+        googleMap.setOnMarkerClickListener { marker ->
+            if (marker.tag == "landmark") {
+                val animator = ValueAnimator.ofFloat(0f, 1f)
+                animator.duration = 600 // milliseconds
+                animator.interpolator = AccelerateDecelerateInterpolator()
+                val startPosition = marker.position
+                val jumpHeight = 0.0003 // adjust for visible jump
+
+                animator.addUpdateListener { valueAnimator ->
+                    val t = valueAnimator.animatedValue as Float
+                    // Simple jump up and down using a sine wave
+                    val newLatitude = startPosition.latitude + jumpHeight * sin(t * Math.PI)
+                    marker.position = LatLng(newLatitude, startPosition.longitude)
+                }
+                animator.start()
+            }
+            // Return false to allow the default behavior (show info window)
+            false
+        }
     }
 
     private fun initializeFilterChips() {
-        if (challengeManager.isRainyDayFilterUnlocked()) {
-            binding.chipFilterRainy.visibility = View.VISIBLE
-            binding.chipFilterRainy.setOnCheckedChangeListener { _, isChecked ->
-                rainyFilterActive = isChecked
-                Log.d("HeatmapActivity", "Rainy filter: $rainyFilterActive")
-                loadAndDrawMapData()
-            }
-        } else {
-            binding.chipFilterRainy.visibility = View.GONE
-        }
+        // ユーザーIDがない場合は何もしない
+        if (userId == null) return
 
-        if (challengeManager.isNightWalkFilterUnlocked()) {
-            binding.chipFilterNight.visibility = View.VISIBLE
-            binding.chipFilterNight.setOnCheckedChangeListener { _, isChecked ->
-                nightFilterActive = isChecked
-                Log.d("HeatmapActivity", "Night filter: $nightFilterActive")
-                loadAndDrawMapData()
+        CoroutineScope(Dispatchers.Main).launch {
+            if (challengeManager.isRainyDayFilterUnlocked()) {
+                binding.chipFilterRainy.visibility = View.VISIBLE
+                binding.chipFilterRainy.setOnCheckedChangeListener { _, isChecked ->
+                    rainyFilterActive = isChecked
+                    Log.d("HeatmapActivity", "Rainy filter: $rainyFilterActive")
+                    loadAndDrawMapData()
+                }
+            } else {
+                binding.chipFilterRainy.visibility = View.GONE
             }
-        } else {
-            binding.chipFilterNight.visibility = View.GONE
-        }
 
-        if (challengeManager.isWeekendFilterUnlocked()) {
-            binding.chipFilterWeekend.visibility = View.VISIBLE
-            binding.chipFilterWeekend.setOnCheckedChangeListener { _, isChecked ->
-                weekendFilterActive = isChecked
-                Log.d("HeatmapActivity", "Weekend filter: $weekendFilterActive")
-                loadAndDrawMapData()
+            if (challengeManager.isNightWalkFilterUnlocked()) {
+                binding.chipFilterNight.visibility = View.VISIBLE
+                binding.chipFilterNight.setOnCheckedChangeListener { _, isChecked ->
+                    nightFilterActive = isChecked
+                    Log.d("HeatmapActivity", "Night filter: $nightFilterActive")
+                    loadAndDrawMapData()
+                }
+            } else {
+                binding.chipFilterNight.visibility = View.GONE
             }
-        } else {
-            binding.chipFilterWeekend.visibility = View.GONE
+
+            if (challengeManager.isWeekendFilterUnlocked()) {
+                binding.chipFilterWeekend.visibility = View.VISIBLE
+                binding.chipFilterWeekend.setOnCheckedChangeListener { _, isChecked ->
+                    weekendFilterActive = isChecked
+                    Log.d("HeatmapActivity", "Weekend filter: $weekendFilterActive")
+                    loadAndDrawMapData()
+                }
+            } else {
+                binding.chipFilterWeekend.visibility = View.GONE
+            }
         }
     }
 
@@ -127,52 +174,46 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
     }
 
     private fun loadAndDrawMapData() {
+        val currentUserId = userId ?: return
+
         binding.progressBarHeatmap.visibility = View.VISIBLE
         clearMapVisualization()
 
-        Log.d("HeatmapActivity", "Loading map data. Heatmap: $heatmapMode, Rainy: $rainyFilterActive, Night: $nightFilterActive, Weekend: $weekendFilterActive")
+        Log.d("HeatmapActivity", "Loading map data for user $currentUserId. Heatmap: $heatmapMode, Rainy: $rainyFilterActive, Night: $nightFilterActive, Weekend: $weekendFilterActive")
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                var query: Query = firestore.collection("records")
+                var query: Query = firestore.collection("records").whereEqualTo("userId", currentUserId)
 
                 if (rainyFilterActive) {
-                    query = query.whereEqualTo("weather", WEATHER_RAINY)
-                    Log.d("HeatmapActivity", "Applying Firestore weather filter: $WEATHER_RAINY")
+                    query = query.whereEqualTo("weather", weatherRainy)
+                    Log.d("HeatmapActivity", "Applying Firestore weather filter: $weatherRainy")
                 }
 
-                val allFetchedRecords = query.get().await().toObjects<Record>()
-                Log.d("HeatmapActivity", "Fetched ${allFetchedRecords.size} records after Firestore query.")
+                val allFetchedRecords: List<Record> = query.get().await().toObjects()
+                Log.d("HeatmapActivity", "Fetched ${allFetchedRecords.size} records for user $currentUserId.")
 
                 val clientFilteredRecords = allFetchedRecords.filter { record ->
-                    var passesNightFilter = true
-                    if (nightFilterActive) {
-                        if (record.startTime != null) {
-                            val calendar = Calendar.getInstance().apply { timeInMillis = record.startTime!! }
-                            val hour = calendar.get(Calendar.HOUR_OF_DAY)
-                            passesNightFilter = hour >= 19 || hour < 5
-                        } else {
-                            passesNightFilter = false
-                        }
-                    }
+                    val passesNightFilter = if (nightFilterActive) {
+                        (record.startTime != 0L) && (Calendar.getInstance().apply { timeInMillis = record.startTime }.get(Calendar.HOUR_OF_DAY) in 19..23 || Calendar.getInstance().apply { timeInMillis = record.startTime }.get(Calendar.HOUR_OF_DAY) in 0..4)
+                    } else true
 
-                    var passesWeekendFilter = true
-                    if (weekendFilterActive) {
-                        if (record.startTime != null) {
-                            val calendar = Calendar.getInstance().apply { timeInMillis = record.startTime!! }
-                            val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
-                            passesWeekendFilter = dayOfWeek == Calendar.SATURDAY || dayOfWeek == Calendar.SUNDAY
-                        } else {
-                            passesWeekendFilter = false
-                        }
-                    }
+                    val passesWeekendFilter = if (weekendFilterActive) {
+                        (record.startTime != 0L) && (Calendar.getInstance().apply { timeInMillis = record.startTime }.get(Calendar.DAY_OF_WEEK) in arrayOf(Calendar.SATURDAY, Calendar.SUNDAY))
+                    } else true
+
                     passesNightFilter && passesWeekendFilter
                 }
                 Log.d("HeatmapActivity", "Filtered to ${clientFilteredRecords.size} records on client-side.")
 
-                val landmarks = firestore.collection("landmarks").get().await().toObjects<Landmark>()
+                val isAnyFilterActive = rainyFilterActive || nightFilterActive || weekendFilterActive
+                val landmarks: List<Landmark> = if (isAnyFilterActive) {
+                    emptyList()
+                } else {
+                    firestore.collection("landmarks").whereEqualTo("userId", currentUserId).get().await().toObjects()
+                }
 
-                if (clientFilteredRecords.isEmpty() && (!heatmapMode || landmarks.isEmpty())) {
+                if (clientFilteredRecords.isEmpty() && landmarks.isEmpty()) {
                     withContext(Dispatchers.Main) {
                         Toast.makeText(this@HeatmapActivity, "表示できるデータがありません。", Toast.LENGTH_SHORT).show()
                         binding.progressBarHeatmap.visibility = View.GONE
@@ -190,10 +231,8 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
                                     googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(it, 13f))
                                 }
                             }
-                            Log.d("HeatmapActivity", "Heatmap drawn with ${weightedData.size} points.")
                         } else {
                             Toast.makeText(this@HeatmapActivity, "ヒートマップデータを生成できませんでした。", Toast.LENGTH_SHORT).show()
-                            Log.d("HeatmapActivity", "No weighted data to draw heatmap.")
                         }
                     } else {
                         drawRecordsAsMarkersAndPaths(clientFilteredRecords, landmarks)
@@ -201,20 +240,19 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
                             val firstRecordFirstPoint = clientFilteredRecords.first().pathPoints.first()
                             googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(firstRecordFirstPoint.latitude, firstRecordFirstPoint.longitude), 15f))
                         } else if (landmarks.isNotEmpty() && clientFilteredRecords.isEmpty()) {
-                            val firstLandmark = landmarks.first()
-                            googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(firstLandmark.latitude, firstLandmark.longitude), 13f))
-                        } else if (clientFilteredRecords.isEmpty() && landmarks.isEmpty()) {
-                            Toast.makeText(this@HeatmapActivity, "表示する記録もランドマークもありません。", Toast.LENGTH_SHORT).show()
+                            landmarks.firstOrNull()?.let {
+                                googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(it.latitude, it.longitude), 13f))
+                            }
                         }
                     }
                     binding.progressBarHeatmap.visibility = View.GONE
                 }
 
             } catch (e: Exception) {
-                Log.e("HeatmapActivity", "Error loading map data", e)
+                Log.e("HeatmapActivity", "Error loading map data for user $currentUserId", e)
                 withContext(Dispatchers.Main) {
                     binding.progressBarHeatmap.visibility = View.GONE
-                    Toast.makeText(this@HeatmapActivity, "データの読み込みに失敗: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@HeatmapActivity, "データの読み込みに失敗しました。", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -222,45 +260,44 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private fun calculatePlaceAttachment(records: List<Record>, landmarks: List<Landmark>): Pair<List<WeightedLatLng>, LatLng?> {
         val attachmentScores = mutableMapOf<LatLng, Double>()
-        val groupingRadius = 50.0
 
         records.forEach { record ->
             val path = record.pathPoints
             if (path.isEmpty()) return@forEach
 
             val startPoint = LatLng(path.first().latitude, path.first().longitude)
-            val visitKey = findNearbyKey(startPoint, attachmentScores.keys, groupingRadius) ?: startPoint
+            val visitKey = findNearbyKey(startPoint, attachmentScores.keys) ?: startPoint
             attachmentScores[visitKey] = (attachmentScores[visitKey] ?: 0.0) + 2.0
 
             path.forEach { geoPoint ->
                 val point = LatLng(geoPoint.latitude, geoPoint.longitude)
-                val pathKey = findNearbyKey(point, attachmentScores.keys, groupingRadius) ?: point
+                val pathKey = findNearbyKey(point, attachmentScores.keys) ?: point
                 attachmentScores[pathKey] = (attachmentScores[pathKey] ?: 0.0) + 0.2
             }
             if (!record.memo.isNullOrBlank()) {
-                val memoKey = findNearbyKey(startPoint, attachmentScores.keys, groupingRadius) ?: startPoint
+                val memoKey = findNearbyKey(startPoint, attachmentScores.keys) ?: startPoint
                 attachmentScores[memoKey] = (attachmentScores[memoKey] ?: 0.0) + 5.0
             }
         }
 
         landmarks.forEach { landmark ->
             val point = LatLng(landmark.latitude, landmark.longitude)
-            val key = findNearbyKey(point, attachmentScores.keys, groupingRadius) ?: point
+            val key = findNearbyKey(point, attachmentScores.keys) ?: point
             attachmentScores[key] = (attachmentScores[key] ?: 0.0) + 10.0
         }
 
         val weightedList = attachmentScores.map { (latLng, score) ->
-            val intensity = min(score / ABSOLUTE_MAX_SCORE, 1.0)
+            val intensity = min(score / absoluteMaxScore, 1.0)
             WeightedLatLng(latLng, intensity)
-        }
+        }.toList()
         return Pair(weightedList, attachmentScores.keys.firstOrNull() ?: landmarks.firstOrNull()?.let { LatLng(it.latitude, it.longitude) })
     }
 
-    private fun findNearbyKey(point: LatLng, keys: Set<LatLng>, radius: Double): LatLng? {
+    private fun findNearbyKey(point: LatLng, keys: Set<LatLng>): LatLng? {
         return keys.find {
             val distance = FloatArray(1)
             android.location.Location.distanceBetween(point.latitude, point.longitude, it.latitude, it.longitude, distance)
-            distance[0] < radius
+            distance[0] < GROUPING_RADIUS
         }
     }
 
@@ -297,7 +334,7 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
                     currentMapPolylines.add(googleMap.addPolyline(polylineOptions))
                 }
 
-                val titleTime = record.startTime?.let { SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()).format(Date(it)) } ?: "日時不明"
+                val titleTime = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()).format(Date(record.startTime))
                 val snippetDuration = formatDuration(record.durationMs)
 
                 val startMarkerOptions = MarkerOptions()
@@ -305,7 +342,11 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
                     .title(record.name ?: "記録: $titleTime")
                     .snippet("期間: $snippetDuration")
                     .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN))
-                currentMapMarkers.add(googleMap.addMarker(startMarkerOptions)!!)
+                val marker = googleMap.addMarker(startMarkerOptions)
+                if (marker != null) {
+                    marker.tag = "record"
+                    currentMapMarkers.add(marker)
+                }
             }
         }
 
@@ -313,9 +354,13 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
             val landmarkMarkerOptions = MarkerOptions()
                 .position(LatLng(landmark.latitude, landmark.longitude))
                 .title(landmark.title)
-                .snippet(landmark.episode ?: "")
+                .snippet(landmark.episode)
                 .icon(getLandmarkIcon(landmark.iconType))
-            currentMapMarkers.add(googleMap.addMarker(landmarkMarkerOptions)!!)
+            val marker = googleMap.addMarker(landmarkMarkerOptions)
+            if (marker != null) {
+                marker.tag = "landmark"
+                currentMapMarkers.add(marker)
+            }
         }
     }
 
@@ -325,12 +370,12 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
             "SILVER_PIN" -> BitmapDescriptorFactory.fromResource(R.drawable.ic_landmark_silver_pin)
             "GOLD_PIN" -> BitmapDescriptorFactory.fromResource(R.drawable.ic_landmark_gold_pin)
             "MOON_ICON" -> BitmapDescriptorFactory.fromResource(R.drawable.ic_landmark_moon)
-            "FOOD" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE)
-            "SCENERY" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)
-            "ONSEN" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_CYAN)
-            "SHOPPING" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA)
-            "SIGHTSEEING" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_YELLOW)
-            else -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)
+            "FOOD" -> BitmapDescriptorFactory.fromResource(R.drawable.ic_landmark_food) // Custom icon
+            "SCENERY" -> BitmapDescriptorFactory.fromResource(R.drawable.ic_landmark_scenery) // Custom icon
+            "ONSEN" -> BitmapDescriptorFactory.fromResource(R.drawable.ic_landmark_onsen) // Custom icon
+            "SHOPPING" -> BitmapDescriptorFactory.fromResource(R.drawable.ic_landmark_shopping) // Custom icon
+            "SIGHTSEEING" -> BitmapDescriptorFactory.fromResource(R.drawable.ic_landmark_sightseeing) // Custom icon
+            else -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED) // Default
         }
     }
 
@@ -342,9 +387,9 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
         val minutes = (millis / (1000 * 60)) % 60
         val hours = (millis / (1000 * 60 * 60))
         return when {
-            hours > 0 -> String.format("%d時間%02d分", hours, minutes)
-            minutes > 0 -> String.format("%d分%02d秒", minutes, seconds)
-            else -> String.format("%d秒", seconds)
+            hours > 0 -> String.format(Locale.getDefault(), "%d時間%02d分", hours, minutes)
+            minutes > 0 -> String.format(Locale.getDefault(), "%d分%02d秒", minutes, seconds)
+            else -> String.format(Locale.getDefault(), "%d秒", seconds)
         }
     }
 

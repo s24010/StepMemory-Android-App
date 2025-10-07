@@ -4,7 +4,9 @@ import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.View
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ktx.toObjects // FirestoreのtoObjectsのため
 import com.kic.stepmemory.challenge.ChallengeManager
@@ -30,14 +32,46 @@ class MainActivity : AppCompatActivity() {
     private lateinit var challengeManager: ChallengeManager
     private lateinit var firestore: FirebaseFirestore // Firestoreインスタンス
     private var flashbackRecord: Record? = null // 選択されたフラッシュバック記録
+    private lateinit var auth: FirebaseAuth
+    private var userId: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        challengeManager = ChallengeManager(this)
-        firestore = FirebaseFirestore.getInstance() // Firestoreの初期化
+        firestore = FirebaseFirestore.getInstance()
+        auth = FirebaseAuth.getInstance()
+
+        if (auth.currentUser == null) {
+            auth.signInAnonymously()
+                .addOnCompleteListener(this) { task ->
+                    if (task.isSuccessful) {
+                        Log.d("MainActivity", "signInAnonymously:success")
+                        userId = auth.currentUser?.uid
+                        initializeApp()
+                    } else {
+                        Log.w("MainActivity", "signInAnonymously:failure", task.exception)
+                        Toast.makeText(this, "ユーザー情報の初期化に失敗しました。", Toast.LENGTH_LONG).show()
+                        finish()
+                    }
+                }
+        } else {
+            Log.d("MainActivity", "User already signed in.")
+            userId = auth.currentUser?.uid
+            initializeApp()
+        }
+    }
+
+    private fun initializeApp() {
+        if (userId == null) {
+            Log.e("MainActivity", "Initialization failed: userId is null.")
+            Toast.makeText(this, "アプリの初期化に失敗しました。", Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
+
+        challengeManager = ChallengeManager(this, userId!!)
 
         binding.btnStartRecording.setOnClickListener {
             val intent = Intent(this, RecordingActivity::class.java)
@@ -49,37 +83,37 @@ class MainActivity : AppCompatActivity() {
             startActivity(intent)
         }
 
-        // binding.btnViewAuraMap.text = "絆をヒートマップで見る" // この行を削除またはコメントアウト
         binding.btnViewAuraMap.setOnClickListener {
-            // HeatmapActivity を汎用的なマップ表示画面として拡張する方針なので、遷移先はそのまま
             val intent = Intent(this, HeatmapActivity::class.java)
             startActivity(intent)
         }
 
-        // ▼▼▼ 思い出の一枚カードのクリックリスナー ▼▼▼
         binding.cardFlashback.setOnClickListener {
             flashbackRecord?.let { record ->
-                // ▼▼▼ idUUIDのチェックを修正 ▼▼▼
                 if (record.idUUID.isNotEmpty()) {
                     val intent = Intent(this, ReviewActivity::class.java)
                     intent.putExtra("RECORD_ID", record.idUUID)
                     startActivity(intent)
                 } else {
                     Log.w("MainActivity", "Flashback record ID is empty, cannot navigate.")
-                    // 必要であればユーザーにエラーメッセージを表示
                 }
-                // ▲▲▲ 修正ここまで ▲▲▲
             }
         }
+        // onResumeはライフサイクルで自動的に呼ばれるので、ここでUI更新を呼ぶ必要はない
     }
+
 
     override fun onResume() {
         super.onResume()
-        updateChallengeView()
-        updateFlashbackCardView() // ▼▼▼ フラッシュバックカードの更新処理を呼び出し ▼▼▼
+        // userIdがセットされてからUI更新がかかるようにする
+        if(userId != null) {
+            updateChallengeView()
+            updateFlashbackCardView()
+        }
     }
 
     private fun updateChallengeView() {
+        userId ?: return
         CoroutineScope(Dispatchers.IO).launch {
             val challenge = challengeManager.updateProgressAndGetNewChallengeIfNeeded()
             withContext(Dispatchers.Main) {
@@ -88,33 +122,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ▼▼▼ 思い出の一枚カードの更新処理 (修正版) ▼▼▼
     private fun updateFlashbackCardView() {
+        val currentUserId = userId ?: return
+
         CoroutineScope(Dispatchers.IO).launch {
-            if (challengeManager.isFlashbackFeatureUnlocked()) {
-                // 1年前 ±15日 の日付範囲を計算
-                val calendar = Calendar.getInstance()
-                // val today = calendar.time // Log用
-
-                calendar.add(Calendar.YEAR, -1) // 1年前に設定
-                val targetDateForLog = calendar.time // Log用
-                calendar.add(Calendar.DAY_OF_YEAR, -15) // 15日前
-                val startDate = calendar.timeInMillis
-
-                calendar.add(Calendar.DAY_OF_YEAR, 30) // さらに30日後 (合計±15日の範囲)
-                val endDate = calendar.timeInMillis
-
-                Log.d("MainActivity", "Flashback target date (1 year ago): ${SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(targetDateForLog)}")
-                Log.d("MainActivity", "Flashback search range: from ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(startDate))} to ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(endDate))}")
-
+            if (BuildConfig.ALL_FEATURES_UNLOCKED || challengeManager.isFlashbackFeatureUnlocked()) {
                 try {
                     val querySnapshot = firestore.collection("records")
-                        .whereGreaterThanOrEqualTo("startTime", startDate)
-                        .whereLessThanOrEqualTo("startTime", endDate)
+                        .whereEqualTo("userId", currentUserId)
                         .get()
                         .await()
 
-                    // ▼▼▼ Recordオブジェクトのリスト作成とidUUIDの設定方法を改善 ▼▼▼
                     val fetchedRecords = mutableListOf<Record>()
                     for (document in querySnapshot.documents) {
                         val record = document.toObject(Record::class.java)
@@ -123,11 +141,11 @@ class MainActivity : AppCompatActivity() {
                             fetchedRecords.add(record)
                         }
                     }
-                    Log.d("MainActivity", "Found ${fetchedRecords.size} records for flashback with ID.")
-                    // ▲▲▲ 改善ここまで ▲▲▲
+                    Log.d("MainActivity", "Found ${fetchedRecords.size} total records for flashback for user $currentUserId.")
 
                     if (fetchedRecords.isNotEmpty()) {
-                        flashbackRecord = fetchedRecords.randomOrNull() // ランダムに1件選択
+                        // 記録の中からランダムに1件選択
+                        flashbackRecord = fetchedRecords.randomOrNull()
                         flashbackRecord?.let { record ->
                             withContext(Dispatchers.Main) {
                                 binding.tvFlashbackRecordTitle.text = record.name ?: "名称未設定の記録"
@@ -142,6 +160,7 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                     } else {
+                        // 表示できる記録がない場合はカードを非表示
                         flashbackRecord = null
                         withContext(Dispatchers.Main) {
                             binding.cardFlashback.visibility = View.GONE
@@ -163,7 +182,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
-    // ▲▲▲ ここまで追加 ▲▲▲
 
     private fun displayChallenge(challenge: Challenge) {
         binding.tvChallengeTitle.text = challenge.title

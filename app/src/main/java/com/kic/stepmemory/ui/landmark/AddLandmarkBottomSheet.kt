@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+import com.kic.stepmemory.BuildConfig
 import com.kic.stepmemory.challenge.UnlockedIconManager
 import com.kic.stepmemory.data.Landmark
 import com.kic.stepmemory.databinding.ActivityAddLandmarkBottomSheetBinding
@@ -33,16 +34,16 @@ class AddLandmarkBottomSheet(
         binding.chipPin.isChecked = true
 
         // アンロック状態に応じて特別なアイコンの表示を切り替え
-        if (unlockedIconManager.isIconUnlocked("bronze_pin")) {
+        if (BuildConfig.ALL_FEATURES_UNLOCKED || unlockedIconManager.isIconUnlocked("bronze_pin")) {
             binding.chipBronzePin.visibility = View.VISIBLE
         }
-        if (unlockedIconManager.isIconUnlocked("silver_pin")) {
+        if (BuildConfig.ALL_FEATURES_UNLOCKED || unlockedIconManager.isIconUnlocked("silver_pin")) {
             binding.chipSilverPin.visibility = View.VISIBLE
         }
-        if (unlockedIconManager.isIconUnlocked("gold_pin")) {
+        if (BuildConfig.ALL_FEATURES_UNLOCKED || unlockedIconManager.isIconUnlocked("gold_pin")) {
             binding.chipGoldPin.visibility = View.VISIBLE
         }
-        if (unlockedIconManager.isIconUnlocked("moon_icon")) {
+        if (BuildConfig.ALL_FEATURES_UNLOCKED || unlockedIconManager.isIconUnlocked("moon_icon")) {
             binding.chipMoonIcon.visibility = View.VISIBLE
         }
 

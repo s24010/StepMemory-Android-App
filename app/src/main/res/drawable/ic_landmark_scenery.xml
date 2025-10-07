@@ -1,0 +1,21 @@
+<!-- drawable/ic_landmark_scenery.xml -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#4CAF50"
+        android:pathData="M12,2C8.13,2 5,5.13 5,9c0,5.25 7,13 7,13s7,-7.75 7,-13c0,-3.87,-3.13,-7-7-7z"/>
+    <group
+        android:pivotX="12"
+        android:pivotY="9"
+        android:scaleX="0.7"
+        android:scaleY="0.7"
+        android:translateX="3.5"
+        android:translateY="-0.5">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M14,6l-3.75,5 2.85,3.8 -1.6,1.2 -4.25,-5.67L2,18h20L14,6z"/>
+    </group>
+</vector>

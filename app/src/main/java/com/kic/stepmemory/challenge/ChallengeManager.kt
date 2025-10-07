@@ -5,31 +5,31 @@ import android.content.SharedPreferences
 import android.util.Log
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ktx.toObjects
-import com.kic.stepmemory.BuildConfig // ▼▼▼ BuildConfig をインポート ▼▼▼
-import com.kic.stepmemory.R // Rクラスをインポート (strings.xmlアクセス用)
+import com.kic.stepmemory.BuildConfig
+import com.kic.stepmemory.R
 import com.kic.stepmemory.data.*
 import kotlinx.coroutines.tasks.await
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
 import kotlin.math.ceil
 
-class ChallengeManager(private val context: Context) { // context を private val に変更
+class ChallengeManager(private val context: Context, private val userId: String) {
     companion object {
         const val CHALLENGE_ID_RECORDS_FOR_FLASHBACK = "records_for_flashback"
-        const val CHALLENGE_ID_NIGHT_WALK_5 = "night_walk_5" // 夜の散歩チャレンジ（フィルターアンロック用）
+        const val CHALLENGE_ID_NIGHT_WALK_5 = "night_walk_5"
         const val CHALLENGE_ID_UNLOCK_RAINY_FILTER = "unlock_rainy_filter"
         const val CHALLENGE_ID_UNLOCK_WEEKEND_FILTER = "unlock_weekend_filter"
 
+        private const val PREFS_BASE_NAME = "challenge_prefs"
         private const val PREF_FLASHBACK_FEATURE_UNLOCKED = "flashback_feature_unlocked"
         private const val PREF_RAINY_DAY_FILTER_UNLOCKED = "rainy_day_filter_unlocked"
         private const val PREF_NIGHT_WALK_FILTER_UNLOCKED = "night_walk_filter_unlocked"
         private const val PREF_WEEKEND_FILTER_UNLOCKED = "weekend_filter_unlocked"
-
     }
 
-    private val prefs: SharedPreferences = context.getSharedPreferences("challenge_prefs", Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = context.getSharedPreferences("${PREFS_BASE_NAME}_$userId", Context.MODE_PRIVATE)
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
-    private val unlockedIconManager = UnlockedIconManager(context)
+    private val unlockedIconManager = UnlockedIconManager(context, userId)
 
     private val allTemplates = listOf(
         ChallengeTemplate("welcome", ChallengeType.TOTAL_RECORDS,
@@ -236,8 +236,8 @@ class ChallengeManager(private val context: Context) { // context を private va
     private fun isWeekendFilterUnlockedInternal(): Boolean = prefs.getBoolean(PREF_WEEKEND_FILTER_UNLOCKED, false)
 
     private suspend fun getUserStats(): UserStats {
-        val records = firestore.collection("records").get().await().toObjects<Record>()
-        val landmarks = firestore.collection("landmarks").get().await().toObjects<Landmark>()
+        val records = firestore.collection("records").whereEqualTo("userId", userId).get().await().toObjects<Record>()
+        val landmarks = firestore.collection("landmarks").whereEqualTo("userId", userId).get().await().toObjects<Landmark>()
         val totalDuration = records.sumOf { it.durationMs ?: 0L }
         val avgDuration = if (records.isNotEmpty()) totalDuration / records.size else 0L
         val totalDistanceMeters = records.sumOf { calculateDistance(it.pathPoints) }

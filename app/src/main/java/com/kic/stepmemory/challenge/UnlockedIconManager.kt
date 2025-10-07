@@ -2,8 +2,8 @@ package com.kic.stepmemory.challenge
 
 import android.content.Context
 
-class UnlockedIconManager(context: Context) {
-    private val prefs = context.getSharedPreferences("UnlockedIcons", Context.MODE_PRIVATE)
+class UnlockedIconManager(context: Context, userId: String) {
+    private val prefs = context.getSharedPreferences("UnlockedIcons_$userId", Context.MODE_PRIVATE)
     private val UNLOCKED_ICONS_KEY = "unlocked_icons_set"
 
     fun unlockIcon(iconId: String) {

@@ -11,4 +11,10 @@
     </string-array>
 
     <string name="weather_rainy_value">雨</string>
+    <string name="record_date_format">%1$s - %2$s</string>
+    <string name="todays_challenge">今日のチャレンジ</string>
+    <string name="memory_lane">思い出の一枚</string>
+    <string name="start_recording">記録を開始する</string>
+    <string name="view_history">履歴を見る</string>
+    <string name="view_map">マップを見る</string>
 </resources>

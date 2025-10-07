@@ -64,6 +64,7 @@ dependencies {
 
     implementation(platform("com.google.firebase:firebase-bom:32.8.0"))
     implementation("com.google.firebase:firebase-firestore-ktx")
+    implementation("com.google.firebase:firebase-auth-ktx")
     // ★★★ Firebase Storage KTXライブラリを追加 ★★★
     implementation("com.google.firebase:firebase-storage-ktx")
     implementation("com.google.code.gson:gson:2.10.1")
@@ -84,7 +85,7 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.9.0")
     // Fragment KTX
     implementation("androidx.fragment:fragment-ktx:1.6.2")
-    implementation(libs.androidx.activity)
+    implementation("androidx.activity:activity:1.10.1")
 
     // Test libraries
     testImplementation("junit:junit:4.13.2")
