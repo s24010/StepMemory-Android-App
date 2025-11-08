@@ -30,6 +30,7 @@ class HistoryActivity : AppCompatActivity() {
         binding = ActivityHistoryBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        setSupportActionBar(binding.toolbarHistory)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = "記録履歴"
 

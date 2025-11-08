@@ -7,6 +7,7 @@ import java.util.Date
 @IgnoreExtraProperties
 data class Landmark(
     var userId: String = "",
+    var recordId: String = "",
     var title: String = "",
     var episode: String = "",
     var iconType: String = "PIN",
