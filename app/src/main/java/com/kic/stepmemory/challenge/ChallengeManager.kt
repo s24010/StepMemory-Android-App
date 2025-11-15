@@ -142,9 +142,12 @@ class ChallengeManager(private val context: Context, private val userId: String)
         val activeChallengeId = prefs.getString("active_challenge_id", null)
         if (activeChallengeId != null) {
             val template = findTemplateById(activeChallengeId)
-            val challenge = generateChallengeFromTemplate(template, stats)
-            if (!challenge.isCompleted) {
-                return challenge
+            // Check if the prerequisites for the active challenge are still met.
+            if (template.prerequisite(stats)) {
+                val challenge = generateChallengeFromTemplate(template, stats)
+                if (!challenge.isCompleted) {
+                    return challenge
+                }
             }
         }
         val newChallenge = selectNewChallenge(stats)
@@ -236,8 +239,8 @@ class ChallengeManager(private val context: Context, private val userId: String)
     private fun isWeekendFilterUnlockedInternal(): Boolean = prefs.getBoolean(PREF_WEEKEND_FILTER_UNLOCKED, false)
 
     private suspend fun getUserStats(): UserStats {
-        val records = firestore.collection("records").whereEqualTo("userId", userId).get().await().toObjects<Record>()
-        val landmarks = firestore.collection("landmarks").whereEqualTo("userId", userId).get().await().toObjects<Landmark>()
+        val records = firestore.collection("users").document(userId).collection("records").get().await().toObjects<Record>()
+        val landmarks = firestore.collection("users").document(userId).collection("landmarks").get().await().toObjects<Landmark>()
         val totalDuration = records.sumOf { it.durationMs ?: 0L }
         val avgDuration = if (records.isNotEmpty()) totalDuration / records.size else 0L
         val totalDistanceMeters = records.sumOf { calculateDistance(it.pathPoints) }
@@ -257,7 +260,7 @@ class ChallengeManager(private val context: Context, private val userId: String)
                 calendar.timeInMillis = it
                 when (calendar.get(Calendar.DAY_OF_WEEK)) {
                     Calendar.SATURDAY, Calendar.SUNDAY -> weekendRecordCount++
-                    else -> { /* 土日以外は特に何もしない */ } // 修正点1: else を追加
+                    else -> { /* 土日以外は特に何もしない */ }
                 }
             }
         }
@@ -302,22 +305,26 @@ class ChallengeManager(private val context: Context, private val userId: String)
 
     private fun selectNewChallenge(stats: UserStats): Challenge {
         val completed = prefs.getStringSet("completed_challenges", emptySet()) ?: emptySet()
-        val welcomeTemplateId = "welcome"
-        val welcomeChallengeTemplate = allTemplates.first { it.id == welcomeTemplateId }
+        val welcomeTemplate = allTemplates.first { it.id == "welcome" }
 
-        if (stats.totalRecords == 0 && !completed.contains(welcomeTemplateId)) {
-            return generateChallengeFromTemplate(welcomeChallengeTemplate, stats)
+        // If the user has no records, this is the only challenge they can get.
+        if (stats.totalRecords == 0) {
+            return generateChallengeFromTemplate(welcomeTemplate, stats)
         }
+
         val possibleTemplates = allTemplates.filter {
-            !completed.contains(it.id) && it.prerequisite(stats)
+            it.id != "welcome" && !completed.contains(it.id) && it.prerequisite(stats)
         }
-        var selectedTemplate = possibleTemplates.randomOrNull()
-        if (selectedTemplate == null) {
-            Log.d("ChallengeManager", "No new suitable challenges found. Defaulting to welcome challenge or a generic one.")
-            // Consider a fallback if all challenges are completed and prerequisites for none are met.
-            selectedTemplate = allTemplates.firstOrNull { !completed.contains(it.id) } ?: welcomeChallengeTemplate
+
+        val selectedTemplate = possibleTemplates.randomOrNull()
+
+        return if (selectedTemplate != null) {
+            generateChallengeFromTemplate(selectedTemplate, stats)
+        } else {
+            Log.d("ChallengeManager", "No new suitable challenges found. Finding any uncompleted challenge as a fallback.")
+            val fallbackTemplate = allTemplates.firstOrNull { !completed.contains(it.id) } ?: welcomeTemplate
+            generateChallengeFromTemplate(fallbackTemplate, stats)
         }
-        return generateChallengeFromTemplate(selectedTemplate, stats)
     }
 
     private fun findTemplateById(id: String): ChallengeTemplate {
@@ -330,7 +337,6 @@ class ChallengeManager(private val context: Context, private val userId: String)
         val title = template.titleTemplate
         var description = template.descriptionTemplate
 
-        // 修正点2: 以前コメントアウトした when ブロックのコメントを解除
         when (template.type) {
             ChallengeType.TOTAL_DURATION -> {
                 goal = template.goalMultiplier.toInt()
@@ -349,15 +355,10 @@ class ChallengeManager(private val context: Context, private val userId: String)
                 progress = stats.uniqueIconTypes
             }
             ChallengeType.SINGLE_RECORD_DURATION -> {
-                val avgMinutes = stats.averageDurationMinutes
-                val calculatedGoal = if (avgMinutes > 0) {
-                    ceil((avgMinutes * template.goalMultiplier) / 5).toInt() * 5
-                } else {
-                    10
-                }
-                goal = if (calculatedGoal > 0) calculatedGoal else 10
-                progress = 0
-                description = description.replace("{avg}", avgMinutes.toString())
+                val baseGoal = if (stats.averageDurationMinutes > 0) stats.averageDurationMinutes else 15
+                goal = ceil(baseGoal * template.goalMultiplier).toInt()
+                progress = 0 // This type of challenge is evaluated on a per-record basis, not cumulatively.
+                description = description.replace("{avg}", stats.averageDurationMinutes.toString())
             }
             ChallengeType.TOTAL_DISTANCE -> {
                 goal = template.goalMultiplier.toInt()
@@ -375,28 +376,15 @@ class ChallengeManager(private val context: Context, private val userId: String)
                 goal = template.goalMultiplier.toInt()
                 progress = stats.weekendRecordCount
             }
-            else -> {
-                Log.w("ChallengeManager", "Unknown ChallengeType encountered: ${template.type}. Using default goal/progress.")
-                // goal と progress は既に 0 で初期化されているため、
-                // ここで明示的に再設定する必要は必ずしもありませんが、
-                // 安全策としてデフォルト値を設定することも可能です。
-                // goal = 0
-                // progress = 0
-                // description = "不明なチャレンジです。" // 必要に応じて説明も変更
-            }
         }
-
-        val finalTitle = title.replace("{goal}", goal.toString())
-        val finalDescription = description.replace("{goal}", goal.toString()).replace("{progress}", progress.toString())
 
         return Challenge(
             id = template.id,
-            title = finalTitle,
-            description = finalDescription,
-            currentProgress = progress,
-            goal = goal,
             type = template.type,
-            isCompleted = progress >= goal && goal > 0
+            title = title.replace("{goal}", goal.toString()),
+            description = description.replace("{goal}", goal.toString()),
+            currentProgress = progress,
+            goal = goal
         )
     }
 }

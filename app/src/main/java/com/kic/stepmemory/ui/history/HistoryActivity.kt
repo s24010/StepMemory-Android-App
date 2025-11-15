@@ -69,8 +69,7 @@ class HistoryActivity : AppCompatActivity() {
         binding.tvNoRecords.visibility = View.GONE
         binding.rvRecords.visibility = View.GONE
 
-        firestore.collection("records")
-            .whereEqualTo("userId", currentUserId)
+        firestore.collection("users").document(currentUserId).collection("records")
             .orderBy("createdAt", Query.Direction.DESCENDING)
             .get()
             .addOnSuccessListener { querySnapshot ->
@@ -118,12 +117,13 @@ class HistoryActivity : AppCompatActivity() {
     }
 
     private fun deleteRecordFromFirestore(record: Record) {
+        val currentUserId = userId ?: return
         if (record.idUUID.isEmpty()) {
             Toast.makeText(this, "削除エラー: 記録IDが見つかりません。", Toast.LENGTH_SHORT).show()
             return
         }
         binding.progressBar.visibility = View.VISIBLE
-        firestore.collection("records").document(record.idUUID).delete()
+        firestore.collection("users").document(currentUserId).collection("records").document(record.idUUID).delete()
             .addOnSuccessListener {
                 binding.progressBar.visibility = View.GONE
                 Toast.makeText(this, "記録を削除しました。", Toast.LENGTH_SHORT).show()

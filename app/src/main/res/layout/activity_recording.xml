@@ -7,82 +7,38 @@
     tools:context=".ui.recording.RecordingActivity">
 
     <androidx.fragment.app.FragmentContainerView
-        android:id="@+id/map"
+        android:id="@+id/map_recording"
         android:name="com.google.android.gms.maps.SupportMapFragment"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintBottom_toTopOf="@+id/controls_layout"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <Button
-        android:id="@+id/btn_record_action"
-        android:layout_width="0dp"
+    <LinearLayout
+        android:id="@+id/controls_layout"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="記録を開始する"
-        android:textSize="18sp"
+        android:orientation="horizontal"
         android:padding="16dp"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintWidth_percent="0.8"
-        android:layout_marginBottom="16dp"
-        android:layout_marginTop="16dp" />
+        app:layout_constraintBottom_toBottomOf="parent">
 
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/fab_my_location"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginEnd="16dp"
-        android:layout_marginBottom="16dp"
-        android:clickable="true"
-        android:contentDescription="現在地を表示"
-        android:focusable="true"
-        app:srcCompat="@android:drawable/ic_menu_mylocation"
-        app:layout_constraintBottom_toTopOf="@+id/btn_record_action"
-        app:layout_constraintEnd_toEndOf="parent" />
+        <Button
+            android:id="@+id/btn_start_recording"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="記録を開始" 
+            android:layout_marginEnd="8dp"/>
 
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/fab_add_landmark_recording"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginBottom="16dp"
-        android:clickable="true"
-        android:contentDescription="ランドマークを現在地に追加"
-        android:focusable="true"
-        app:layout_constraintBottom_toTopOf="@+id/btn_record_action"
-        app:layout_constraintStart_toStartOf="parent"
-        app:srcCompat="@android:drawable/ic_menu_add" />
+        <Button
+            android:id="@+id/btn_stop_recording"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="記録を終了" />
 
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/fab_record_audio"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="16dp"
-        android:contentDescription="音声を録音"
-        app:layout_constraintBottom_toTopOf="@+id/btn_record_action"
-        app:layout_constraintEnd_toStartOf="@+id/fab_my_location"
-        app:layout_constraintStart_toEndOf="@+id/fab_add_landmark_recording"
-        app:srcCompat="@android:drawable/ic_btn_speak_now" />
-
-    <TextView
-        android:id="@+id/tv_recording_status"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:background="@drawable/rounded_background"
-        android:paddingStart="8dp"
-        android:paddingEnd="8dp"
-        android:paddingTop="4dp"
-        android:paddingBottom="4dp"
-        android:textColor="@android:color/black"
-        android:visibility="gone"
-        tools:text="録音中..."
-        tools:visibility="visible"
-        android:layout_marginBottom="8dp"
-        app:layout_constraintBottom_toTopOf="@+id/fab_record_audio"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
+    </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

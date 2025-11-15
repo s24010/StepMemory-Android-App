@@ -71,6 +71,13 @@ class MainActivity : AppCompatActivity() {
 
         challengeManager = ChallengeManager(this, userId!!)
 
+        // Show dummy data button only in unlocked builds
+        if (BuildConfig.ALL_FEATURES_UNLOCKED) {
+            binding.btnCreateDummyData.visibility = View.VISIBLE
+        } else {
+            binding.btnCreateDummyData.visibility = View.GONE
+        }
+
         binding.btnStartRecording.setOnClickListener {
             val intent = Intent(this, RecordingActivity::class.java)
             startActivity(intent)
@@ -125,25 +132,38 @@ class MainActivity : AppCompatActivity() {
                 // 1. Create a dummy Record
                 val startTime = System.currentTimeMillis() - 3600 * 1000 // 1 hour ago
                 val endTime = System.currentTimeMillis()
-                val pathPoints = listOf(
-                    GeoPoint(35.685177, 139.7528),   // Tokyo Station
-                    GeoPoint(35.681236, 139.7523),  // Nijubashi Bridge
-                    GeoPoint(35.6782, 139.7528),    // Sakurada-mon Gate
-                    GeoPoint(35.682, 139.7479),     // Chidorigafuchi
-                    GeoPoint(35.693, 139.75)        // Near Kitanomaru Park
+                val firebasePathPoints = listOf(
+                    com.google.firebase.firestore.GeoPoint(35.685177, 139.7528),   // Tokyo Station
+                    com.google.firebase.firestore.GeoPoint(35.681236, 139.7523),  // Nijubashi Bridge
+                    com.google.firebase.firestore.GeoPoint(35.6782, 139.7528),    // Sakurada-mon Gate
+                    com.google.firebase.firestore.GeoPoint(35.682, 139.7479),     // Chidorigafuchi
+                    com.google.firebase.firestore.GeoPoint(35.693, 139.75)        // Near Kitanomaru Park
                 )
+
+                // Convert Firebase GeoPoint to your custom GeoPoint
+                val customPathPoints = firebasePathPoints.map { com.kic.stepmemory.data.GeoPoint(it.latitude, it.longitude) }
+
+                // Create a dummy audio pin at a different location (Chidorigafuchi)
+                val dummyAudioPin = AudioPin(
+                    audioUrl = "gs://stepmemory.appspot.com/dummy_audio/dummy_sound.mp3",
+                    latitude = firebasePathPoints[3].latitude, // Chidorigafuchi
+                    longitude = firebasePathPoints[3].longitude,
+                    createdAt = Date(startTime + 1200 * 1000) // 20 minutes after start
+                )
+
                 val newRecord = Record(
                     userId = currentUserId,
-                    name = "皇居周辺の散歩",
-                    memo = "天気が良かったので、皇居の周りを散歩しました。とても気持ちよかったです。",
+                    name = "皇居周辺の散歩 (音声付き)",
+                    memo = "天気が良かったので、皇居の周りを散歩しました。千鳥ヶ淵で音声を録音しました。",
                     startTime = startTime,
                     endTime = endTime,
-                    pathPoints = pathPoints,
+                    pathPoints = customPathPoints,
+                    audioPins = listOf(dummyAudioPin),
                     createdAt = Date()
                 )
 
                 // Save the record and get its ID
-                val recordDocument = firestore.collection("records").add(newRecord).await()
+                val recordDocument = firestore.collection("users").document(currentUserId).collection("records").add(newRecord).await()
                 val newRecordId = recordDocument.id
 
                 // 2. Create associated Landmarks
@@ -173,7 +193,7 @@ class MainActivity : AppCompatActivity() {
                 // Save landmarks in a batch
                 val batch = firestore.batch()
                 landmarks.forEach { landmark ->
-                    val landmarkRef = firestore.collection("landmarks").document()
+                    val landmarkRef = firestore.collection("users").document(currentUserId).collection("landmarks").document()
                     batch.set(landmarkRef, landmark)
                 }
                 batch.commit().await()
@@ -207,8 +227,7 @@ class MainActivity : AppCompatActivity() {
         CoroutineScope(Dispatchers.IO).launch {
             if (BuildConfig.ALL_FEATURES_UNLOCKED || challengeManager.isFlashbackFeatureUnlocked()) {
                 try {
-                    val querySnapshot = firestore.collection("records")
-                        .whereEqualTo("userId", currentUserId)
+                    val querySnapshot = firestore.collection("users").document(currentUserId).collection("records")
                         .get()
                         .await()
 

@@ -183,7 +183,7 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                var query: Query = firestore.collection("records").whereEqualTo("userId", currentUserId)
+                var query: Query = firestore.collection("users").document(currentUserId).collection("records")
 
                 if (rainyFilterActive) {
                     query = query.whereEqualTo("weather", weatherRainy)
@@ -210,7 +210,7 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
                 val landmarks: List<Landmark> = if (isAnyFilterActive) {
                     emptyList()
                 } else {
-                    firestore.collection("landmarks").whereEqualTo("userId", currentUserId).get().await().toObjects()
+                    firestore.collection("users").document(currentUserId).collection("landmarks").get().await().toObjects()
                 }
 
                 if (clientFilteredRecords.isEmpty() && landmarks.isEmpty()) {
