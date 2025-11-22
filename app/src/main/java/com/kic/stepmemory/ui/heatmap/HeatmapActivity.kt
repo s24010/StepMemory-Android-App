@@ -262,24 +262,22 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
         val attachmentScores = mutableMapOf<LatLng, Double>()
 
         records.forEach { record ->
-            val path = record.pathPoints
-            if (path.isEmpty()) return@forEach
-
-            val startPoint = LatLng(path.first().latitude, path.first().longitude)
-            val visitKey = findNearbyKey(startPoint, attachmentScores.keys) ?: startPoint
-            attachmentScores[visitKey] = (attachmentScores[visitKey] ?: 0.0) + 5.0 // Start point score
-
-            path.forEach { geoPoint ->
+            // Path Points (Start, Goal, and Intermediate)
+            record.pathPoints.forEach { geoPoint ->
                 val point = LatLng(geoPoint.latitude, geoPoint.longitude)
                 val pathKey = findNearbyKey(point, attachmentScores.keys) ?: point
-                attachmentScores[pathKey] = (attachmentScores[pathKey] ?: 0.0) + 2.5 // Path point score
+                attachmentScores[pathKey] = (attachmentScores[pathKey] ?: 0.0) + 2.5 // Score for each path point
             }
-            if (!record.memo.isNullOrBlank()) {
-                val memoKey = findNearbyKey(startPoint, attachmentScores.keys) ?: startPoint
-                attachmentScores[memoKey] = (attachmentScores[memoKey] ?: 0.0) + 10.0 // Memo score
+
+            // Audio Pins
+            record.audioPins.forEach { audioPin ->
+                val point = LatLng(audioPin.latitude, audioPin.longitude)
+                val audioKey = findNearbyKey(point, attachmentScores.keys) ?: point
+                attachmentScores[audioKey] = (attachmentScores[audioKey] ?: 0.0) + 10.0 // Score for each audio pin
             }
         }
 
+        // Landmarks
         landmarks.forEach { landmark ->
             val point = LatLng(landmark.latitude, landmark.longitude)
             val key = findNearbyKey(point, attachmentScores.keys) ?: point
