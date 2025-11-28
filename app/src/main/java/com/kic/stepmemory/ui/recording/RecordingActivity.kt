@@ -27,6 +27,7 @@ import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.maps.model.PolylineOptions
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
 import com.google.gson.Gson
@@ -46,8 +47,8 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
     private lateinit var binding: ActivityRecordingBinding
     private lateinit var googleMap: GoogleMap
     private lateinit var fusedLocationClient: FusedLocationProviderClient
-    private lateinit var firestore: FirebaseFirestore
     private lateinit var storage: FirebaseStorage
+    private lateinit var auth: FirebaseAuth
 
     private var isTracking = false
     private var currentPathPoints: MutableList<LatLng> = LocationTrackingService.currentPathPoints
@@ -59,6 +60,7 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
     private val AUDIO_PERMISSION_REQUEST_CODE = 2002
 
     private val recordedAudioPins = mutableListOf<AudioPin>()
+    private val recordedLandmarks = mutableListOf<Landmark>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -66,8 +68,8 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
         setContentView(binding.root)
 
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-        firestore = FirebaseFirestore.getInstance()
         storage = FirebaseStorage.getInstance()
+        auth = FirebaseAuth.getInstance()
 
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = "記録中"
@@ -97,7 +99,7 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
                 if (location != null) {
                     val currentLatLng = LatLng(location.latitude, location.longitude)
                     AddLandmarkBottomSheet(currentLatLng.latitude, currentLatLng.longitude) { landmark ->
-                        saveLandmarkToFirestore(landmark)
+                        addLandmarkToList(landmark)
                     }.show(supportFragmentManager, AddLandmarkBottomSheet.TAG)
                 } else {
                     Toast.makeText(this, "現在地が取得できませんでした。", Toast.LENGTH_SHORT).show()
@@ -130,22 +132,16 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
-    private fun saveLandmarkToFirestore(landmark: Landmark) {
-        firestore.collection("landmarks")
-            .add(landmark)
-            .addOnSuccessListener {
-                Toast.makeText(this, "ランドマークを登録しました！", Toast.LENGTH_SHORT).show()
-                googleMap.addMarker(
-                    MarkerOptions()
-                        .position(LatLng(landmark.latitude, landmark.longitude))
-                        .title(landmark.title)
-                        .snippet(landmark.episode)
-                        .icon(getMarkerIcon(landmark.iconType))
-                )
-            }
-            .addOnFailureListener { e ->
-                Toast.makeText(this, "ランドマークの登録に失敗しました: ${e.message}", Toast.LENGTH_LONG).show()
-            }
+    private fun addLandmarkToList(landmark: Landmark) {
+        recordedLandmarks.add(landmark)
+        Toast.makeText(this, "ランドマークを一時保存しました！", Toast.LENGTH_SHORT).show()
+        googleMap.addMarker(
+            MarkerOptions()
+                .position(LatLng(landmark.latitude, landmark.longitude))
+                .title(landmark.title)
+                .snippet(landmark.episode)
+                .icon(getMarkerIcon(landmark.iconType))
+        )
     }
 
     private fun getMarkerIcon(iconType: String): BitmapDescriptor {
@@ -257,10 +253,14 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
         Toast.makeText(this, "記録を終了しました。", Toast.LENGTH_SHORT).show()
         val memoIntent = Intent(this, MemoActivity::class.java)
 
-        // ★★★ この部分を修正 ★★★
         if (recordedAudioPins.isNotEmpty()) {
             val audioPinsJson = Gson().toJson(recordedAudioPins)
             memoIntent.putExtra("AUDIO_PINS_JSON", audioPinsJson)
+        }
+
+        if (recordedLandmarks.isNotEmpty()) {
+            val landmarksJson = Gson().toJson(recordedLandmarks)
+            memoIntent.putExtra("LANDMARKS_JSON", landmarksJson)
         }
 
         memoIntent.putExtra("RECORD_START_TIME", trackingStartTime)
@@ -351,7 +351,9 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
     private fun uploadAudioAndCreatePin() {
         val audioFilePath = binding.fabRecordAudio.tag as? String ?: return
         val file = Uri.fromFile(File(audioFilePath))
-        val storageRef = storage.reference.child("audio/${file.lastPathSegment}")
+        val userId = auth.currentUser?.uid ?: return
+
+        val storageRef = storage.reference.child("users/$userId/audio/${file.lastPathSegment}")
 
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) { return }
         fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->

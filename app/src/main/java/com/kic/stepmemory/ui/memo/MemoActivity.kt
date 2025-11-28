@@ -14,12 +14,15 @@ import com.kic.stepmemory.R
 import com.kic.stepmemory.challenge.ChallengeManager
 import com.kic.stepmemory.data.AudioPin
 import com.kic.stepmemory.data.GeoPoint
+import com.kic.stepmemory.data.Landmark
 import com.kic.stepmemory.data.Record
 import com.kic.stepmemory.databinding.ActivityMemoBinding
 import com.kic.stepmemory.services.LocationTrackingService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import java.util.Date
 
 class MemoActivity : AppCompatActivity() {
@@ -35,6 +38,7 @@ class MemoActivity : AppCompatActivity() {
     private var recordDurationMs: Long = 0L
 
     private var audioPins: List<AudioPin> = listOf()
+    private var recordedLandmarks: List<Landmark> = listOf()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,6 +67,12 @@ class MemoActivity : AppCompatActivity() {
         if (audioPinsJson != null) {
             val type = object : TypeToken<List<AudioPin>>() {}.type
             audioPins = Gson().fromJson(audioPinsJson, type)
+        }
+
+        val landmarksJson = intent.getStringExtra("LANDMARKS_JSON")
+        if (landmarksJson != null) {
+            val type = object : TypeToken<List<Landmark>>() {}.type
+            recordedLandmarks = Gson().fromJson(landmarksJson, type)
         }
 
         ArrayAdapter.createFromResource(
@@ -119,25 +129,44 @@ class MemoActivity : AppCompatActivity() {
             updatedAt = Date()
         )
 
-        firestore.collection("records")
-            .add(newRecord)
-            .addOnSuccessListener {
-                Toast.makeText(this, "記録を保存しました！", Toast.LENGTH_SHORT).show()
-                LocationTrackingService.currentPathPoints.clear()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val recordDocument = firestore.collection("users").document(currentUserId)
+                    .collection("records").add(newRecord).await()
+                val recordId = recordDocument.id
 
-                CoroutineScope(Dispatchers.IO).launch {
-                    challengeManager.updateProgressAndGetNewChallengeIfNeeded()
+                if (recordedLandmarks.isNotEmpty()) {
+                    val batch = firestore.batch()
+                    recordedLandmarks.forEach { landmark ->
+                        val landmarkWithRecordId = landmark.copy(recordId = recordId)
+                        val landmarkRef = firestore.collection("users").document(currentUserId)
+                            .collection("landmarks").document()
+                        batch.set(landmarkRef, landmarkWithRecordId)
+                    }
+                    batch.commit().await()
                 }
 
-                val intent = Intent(this, MainActivity::class.java)
-                intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
-                startActivity(intent)
-                finish()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MemoActivity, "記録を保存しました！", Toast.LENGTH_SHORT).show()
+                    LocationTrackingService.currentPathPoints.clear()
+
+                    CoroutineScope(Dispatchers.IO).launch {
+                        challengeManager.updateProgressAndGetNewChallengeIfNeeded()
+                    }
+
+                    val intent = Intent(this@MemoActivity, MainActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+                    startActivity(intent)
+                    finish()
+                }
+
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MemoActivity, "記録の保存に失敗しました: ${e.message}", Toast.LENGTH_LONG).show()
+                    e.printStackTrace()
+                }
             }
-            .addOnFailureListener { e ->
-                Toast.makeText(this, "記録の保存に失敗しました: ${e.message}", Toast.LENGTH_LONG).show()
-                e.printStackTrace()
-            }
+        }
     }
 
     override fun onSupportNavigateUp(): Boolean {

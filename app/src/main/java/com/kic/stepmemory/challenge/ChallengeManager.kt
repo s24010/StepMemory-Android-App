@@ -236,8 +236,8 @@ class ChallengeManager(private val context: Context, private val userId: String)
     private fun isWeekendFilterUnlockedInternal(): Boolean = prefs.getBoolean(PREF_WEEKEND_FILTER_UNLOCKED, false)
 
     private suspend fun getUserStats(): UserStats {
-        val records = firestore.collection("records").whereEqualTo("userId", userId).get().await().toObjects<Record>()
-        val landmarks = firestore.collection("landmarks").whereEqualTo("userId", userId).get().await().toObjects<Landmark>()
+        val records = firestore.collection("users").document(userId).collection("records").get().await().toObjects<Record>()
+        val landmarks = firestore.collection("users").document(userId).collection("landmarks").get().await().toObjects<Landmark>()
         val totalDuration = records.sumOf { it.durationMs ?: 0L }
         val avgDuration = if (records.isNotEmpty()) totalDuration / records.size else 0L
         val totalDistanceMeters = records.sumOf { calculateDistance(it.pathPoints) }
@@ -247,17 +247,17 @@ class ChallengeManager(private val context: Context, private val userId: String)
         var rainyDayRecordCount = 0
         var weekendRecordCount = 0
         val calendar = Calendar.getInstance()
-        val rainyWeatherString = context.getString(R.string.weather_rainy_value) // getStringを使用して比較
+        val rainyWeatherString = context.getString(R.string.weather_rainy_value)
 
         for (record in records) {
-            if (record.weather == rainyWeatherString) { // strings.xmlの値と比較
+            if (record.weather == rainyWeatherString) {
                 rainyDayRecordCount++
             }
             record.startTime?.let {
                 calendar.timeInMillis = it
                 when (calendar.get(Calendar.DAY_OF_WEEK)) {
                     Calendar.SATURDAY, Calendar.SUNDAY -> weekendRecordCount++
-                    else -> { /* 土日以外は特に何もしない */ } // 修正点1: else を追加
+                    else -> { }
                 }
             }
         }
@@ -314,7 +314,6 @@ class ChallengeManager(private val context: Context, private val userId: String)
         var selectedTemplate = possibleTemplates.randomOrNull()
         if (selectedTemplate == null) {
             Log.d("ChallengeManager", "No new suitable challenges found. Defaulting to welcome challenge or a generic one.")
-            // Consider a fallback if all challenges are completed and prerequisites for none are met.
             selectedTemplate = allTemplates.firstOrNull { !completed.contains(it.id) } ?: welcomeChallengeTemplate
         }
         return generateChallengeFromTemplate(selectedTemplate, stats)
@@ -330,7 +329,6 @@ class ChallengeManager(private val context: Context, private val userId: String)
         val title = template.titleTemplate
         var description = template.descriptionTemplate
 
-        // 修正点2: 以前コメントアウトした when ブロックのコメントを解除
         when (template.type) {
             ChallengeType.TOTAL_DURATION -> {
                 goal = template.goalMultiplier.toInt()
@@ -377,12 +375,6 @@ class ChallengeManager(private val context: Context, private val userId: String)
             }
             else -> {
                 Log.w("ChallengeManager", "Unknown ChallengeType encountered: ${template.type}. Using default goal/progress.")
-                // goal と progress は既に 0 で初期化されているため、
-                // ここで明示的に再設定する必要は必ずしもありませんが、
-                // 安全策としてデフォルト値を設定することも可能です。
-                // goal = 0
-                // progress = 0
-                // description = "不明なチャレンジです。" // 必要に応じて説明も変更
             }
         }
 

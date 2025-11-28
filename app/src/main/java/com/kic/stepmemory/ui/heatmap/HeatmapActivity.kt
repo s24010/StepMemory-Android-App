@@ -183,7 +183,7 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                var query: Query = firestore.collection("records").whereEqualTo("userId", currentUserId)
+                var query: Query = firestore.collection("users").document(currentUserId).collection("records")
 
                 if (rainyFilterActive) {
                     query = query.whereEqualTo("weather", weatherRainy)
@@ -210,7 +210,7 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
                 val landmarks: List<Landmark> = if (isAnyFilterActive) {
                     emptyList()
                 } else {
-                    firestore.collection("landmarks").whereEqualTo("userId", currentUserId).get().await().toObjects()
+                    firestore.collection("users").document(currentUserId).collection("landmarks").get().await().toObjects()
                 }
 
                 if (clientFilteredRecords.isEmpty() && landmarks.isEmpty()) {
@@ -262,34 +262,38 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
         val attachmentScores = mutableMapOf<LatLng, Double>()
 
         records.forEach { record ->
-            val path = record.pathPoints
-            if (path.isEmpty()) return@forEach
-
-            val startPoint = LatLng(path.first().latitude, path.first().longitude)
-            val visitKey = findNearbyKey(startPoint, attachmentScores.keys) ?: startPoint
-            attachmentScores[visitKey] = (attachmentScores[visitKey] ?: 0.0) + 2.0
-
-            path.forEach { geoPoint ->
+            // Path Points (Start, Goal, and Intermediate)
+            record.pathPoints.forEach { geoPoint ->
                 val point = LatLng(geoPoint.latitude, geoPoint.longitude)
                 val pathKey = findNearbyKey(point, attachmentScores.keys) ?: point
-                attachmentScores[pathKey] = (attachmentScores[pathKey] ?: 0.0) + 0.2
+                attachmentScores[pathKey] = (attachmentScores[pathKey] ?: 0.0) + 2.5 // Score for each path point
             }
-            if (!record.memo.isNullOrBlank()) {
-                val memoKey = findNearbyKey(startPoint, attachmentScores.keys) ?: startPoint
-                attachmentScores[memoKey] = (attachmentScores[memoKey] ?: 0.0) + 5.0
+
+            // Audio Pins
+            record.audioPins.forEach { audioPin ->
+                val point = LatLng(audioPin.latitude, audioPin.longitude)
+                val audioKey = findNearbyKey(point, attachmentScores.keys) ?: point
+                attachmentScores[audioKey] = (attachmentScores[audioKey] ?: 0.0) + 10.0 // Score for each audio pin
             }
         }
 
+        // Landmarks
         landmarks.forEach { landmark ->
             val point = LatLng(landmark.latitude, landmark.longitude)
             val key = findNearbyKey(point, attachmentScores.keys) ?: point
-            attachmentScores[key] = (attachmentScores[key] ?: 0.0) + 10.0
+            attachmentScores[key] = (attachmentScores[key] ?: 0.0) + 20.0 // Landmark score
         }
 
         val weightedList = attachmentScores.map { (latLng, score) ->
-            val intensity = min(score / absoluteMaxScore, 1.0)
-            WeightedLatLng(latLng, intensity)
-        }.toList()
+            WeightedLatLng(latLng, score)
+        }.toMutableList()
+
+        // Add dummy points to anchor the color scale to an absolute range [0, 255].
+        // This prevents the heatmap from using a relative scale based on currently visible points.
+        val dummyLocation = LatLng(90.0, 0.0) // A remote location like the North Pole
+        weightedList.add(WeightedLatLng(dummyLocation, 0.0)) // Anchor for the minimum score
+        weightedList.add(WeightedLatLng(dummyLocation, absoluteMaxScore)) // Anchor for the maximum score
+
         return Pair(weightedList, attachmentScores.keys.firstOrNull() ?: landmarks.firstOrNull()?.let { LatLng(it.latitude, it.longitude) })
     }
 
@@ -307,10 +311,13 @@ class HeatmapActivity : AppCompatActivity(), OnMapReadyCallback {
             return
         }
         val colors = intArrayOf(
-            Color.rgb(0, 0, 255), Color.rgb(0, 255, 255), Color.rgb(0, 255, 0),
-            Color.rgb(255, 255, 0), Color.rgb(255, 165, 0), Color.rgb(255, 0, 0)
+            Color.rgb(0, 0, 255),    // Blue
+            Color.rgb(0, 255, 255),  // Cyan
+            Color.rgb(0, 255, 0),    // Green
+            Color.rgb(255, 255, 0),  // Yellow
+            Color.rgb(255, 0, 0)     // Red
         )
-        val startPoints = floatArrayOf(0.1f, 0.25f, 0.4f, 0.6f, 0.8f, 1.0f)
+        val startPoints = floatArrayOf(0.2f, 0.4f, 0.6f, 0.8f, 1.0f)
         val gradient = Gradient(colors, startPoints)
         val provider = HeatmapTileProvider.Builder().weightedData(data).radius(50).gradient(gradient).opacity(0.7).build()
         currentHeatmapTileOverlay = googleMap.addTileOverlay(TileOverlayOptions().tileProvider(provider))

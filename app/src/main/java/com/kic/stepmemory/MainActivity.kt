@@ -143,7 +143,7 @@ class MainActivity : AppCompatActivity() {
                 )
 
                 // Save the record and get its ID
-                val recordDocument = firestore.collection("records").add(newRecord).await()
+                val recordDocument = firestore.collection("users").document(currentUserId).collection("records").add(newRecord).await()
                 val newRecordId = recordDocument.id
 
                 // 2. Create associated Landmarks
@@ -173,7 +173,7 @@ class MainActivity : AppCompatActivity() {
                 // Save landmarks in a batch
                 val batch = firestore.batch()
                 landmarks.forEach { landmark ->
-                    val landmarkRef = firestore.collection("landmarks").document()
+                    val landmarkRef = firestore.collection("users").document(currentUserId).collection("landmarks").document()
                     batch.set(landmarkRef, landmark)
                 }
                 batch.commit().await()
@@ -207,8 +207,7 @@ class MainActivity : AppCompatActivity() {
         CoroutineScope(Dispatchers.IO).launch {
             if (BuildConfig.ALL_FEATURES_UNLOCKED || challengeManager.isFlashbackFeatureUnlocked()) {
                 try {
-                    val querySnapshot = firestore.collection("records")
-                        .whereEqualTo("userId", currentUserId)
+                    val querySnapshot = firestore.collection("users").document(currentUserId).collection("records")
                         .get()
                         .await()
 
@@ -216,14 +215,14 @@ class MainActivity : AppCompatActivity() {
                     for (document in querySnapshot.documents) {
                         val record = document.toObject(Record::class.java)
                         if (record != null) {
-                            record.idUUID = document.id // ドキュメントIDをidUUIDに設定
+                            record.idUUID = document.id
                             fetchedRecords.add(record)
                         }
                     }
                     Log.d("MainActivity", "Found ${fetchedRecords.size} total records for flashback for user $currentUserId.")
 
                     if (fetchedRecords.isNotEmpty()) {
-                        // 記録の中からランダムに1件選択
+                        // Pick a random record
                         flashbackRecord = fetchedRecords.randomOrNull()
                         flashbackRecord?.let { record ->
                             withContext(Dispatchers.Main) {
@@ -233,13 +232,12 @@ class MainActivity : AppCompatActivity() {
                                 binding.cardFlashback.visibility = View.VISIBLE
                                 Log.d("MainActivity", "Displaying flashback: ${record.name} (ID: ${record.idUUID})")
                             }
-                        } ?: run { // ランダム選択に失敗した場合
+                        } ?: run {
                             withContext(Dispatchers.Main) {
                                 binding.cardFlashback.visibility = View.GONE
                             }
                         }
                     } else {
-                        // 表示できる記録がない場合はカードを非表示
                         flashbackRecord = null
                         withContext(Dispatchers.Main) {
                             binding.cardFlashback.visibility = View.GONE

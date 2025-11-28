@@ -24,11 +24,13 @@ import com.google.android.gms.maps.model.Marker
 import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.maps.model.PolylineOptions
 import com.google.android.material.bottomsheet.BottomSheetBehavior
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.toObject
 import com.google.firebase.ktx.Firebase
 import com.google.firebase.storage.ktx.storage
 import com.kic.stepmemory.R
+import com.kic.stepmemory.data.AudioPin
 import com.kic.stepmemory.data.Landmark
 import com.kic.stepmemory.data.Record
 import com.kic.stepmemory.databinding.ActivityReviewBinding
@@ -37,11 +39,12 @@ import com.kic.stepmemory.ui.streetview.StreetViewActivity
 import java.text.SimpleDateFormat
 import java.util.*
 
-class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
+class ReviewActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMarkerClickListener {
 
     private lateinit var binding: ActivityReviewBinding
     private lateinit var googleMap: GoogleMap
     private lateinit var firestore: FirebaseFirestore
+    private lateinit var auth: FirebaseAuth
     private var record: Record? = null
     private var recordId: String? = null
     private var mediaPlayer: MediaPlayer? = null
@@ -53,6 +56,7 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
         setContentView(binding.root)
 
         firestore = FirebaseFirestore.getInstance()
+        auth = FirebaseAuth.getInstance()
         recordId = intent.getStringExtra("RECORD_ID")
 
         val mapFragment = supportFragmentManager.findFragmentById(R.id.map_review) as SupportMapFragment
@@ -72,6 +76,7 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
         googleMap = map
         googleMap.uiSettings.isZoomControlsEnabled = true
         googleMap.setInfoWindowAdapter(CustomInfoWindowAdapter(this))
+        googleMap.setOnMarkerClickListener(this)
         loadRecordData()
     }
 
@@ -99,15 +104,23 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
     }
 
     private fun loadRecordData() {
+        val userId = auth.currentUser?.uid
+        if (userId == null) {
+            Toast.makeText(this, "ログインが必要です。", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+
         recordId?.let { id ->
-            firestore.collection("records").document(id).get()
+            firestore.collection("users").document(userId).collection("records").document(id).get()
                 .addOnSuccessListener { document ->
                     if (document.exists()) {
                         record = document.toObject(Record::class.java)
                         record?.let {
                             updateUiWithRecord(it)
                             drawRecordPath(it)
-                            loadLandmarks(id) // Pass recordId to load landmarks
+                            loadLandmarks(id)
+                            drawAudioPins(it.audioPins)
                         }
                     } else {
                         Toast.makeText(this, "記録が見つかりませんでした。", Toast.LENGTH_SHORT).show()
@@ -129,8 +142,6 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
         val startTime = sdf.format(Date(record.startTime))
         val endTime = SimpleDateFormat("HH:mm", Locale.JAPAN).format(Date(record.endTime))
         binding.tvRecordDateReview.text = getString(R.string.record_date_format, startTime, endTime)
-
-        binding.btnPlayAudio.visibility = if (record.audioPins.isNullOrEmpty()) View.GONE else View.VISIBLE
     }
 
     private fun bitmapDescriptorFromVector(context: Context, vectorResId: Int): BitmapDescriptor? {
@@ -190,20 +201,6 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
         binding.btnAddLandmarkReview.setOnClickListener { enterLandmarkSelectionMode() }
         binding.btnConfirmLandmark.setOnClickListener { confirmLandmarkLocation() }
         binding.btnCancelLandmark.setOnClickListener { exitLandmarkSelectionMode() }
-
-        binding.btnPlayAudio.setOnClickListener {
-            if (mediaPlayer?.isPlaying == true) {
-                mediaPlayer?.pause()
-                binding.btnPlayAudio.text = "音声を再生"
-                binding.btnPlayAudio.setIconResource(android.R.drawable.ic_media_play)
-            } else if (mediaPlayer != null) {
-                mediaPlayer?.start()
-                binding.btnPlayAudio.text = "一時停止"
-                binding.btnPlayAudio.setIconResource(android.R.drawable.ic_media_pause)
-            } else {
-                downloadAndPlayAudio()
-            }
-        }
     }
 
     private fun enterLandmarkSelectionMode() {
@@ -228,9 +225,14 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
     }
 
     private fun saveLandmarkToFirestore(landmark: Landmark) {
-        recordId?.let {
-            val landmarkWithRecordId = landmark.copy(recordId = it)
-            firestore.collection("landmarks").add(landmarkWithRecordId)
+        val userId = auth.currentUser?.uid
+        if (userId == null) {
+            Toast.makeText(this, "ログインが必要です。", Toast.LENGTH_SHORT).show()
+            return
+        }
+        recordId?.let { recordId ->
+            val landmarkWithRecordId = landmark.copy(recordId = recordId)
+            firestore.collection("users").document(userId).collection("landmarks").add(landmarkWithRecordId)
                 .addOnSuccessListener {
                     Toast.makeText(this, "ランドマークを登録しました！", Toast.LENGTH_SHORT).show()
                     addMarkerToMap(landmarkWithRecordId)
@@ -255,7 +257,9 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
     }
 
     private fun loadLandmarks(recordId: String) {
-        firestore.collection("landmarks").whereEqualTo("recordId", recordId).get()
+        val userId = auth.currentUser?.uid ?: return
+
+        firestore.collection("users").document(userId).collection("landmarks").whereEqualTo("recordId", recordId).get()
             .addOnSuccessListener { documents ->
                 for (document in documents) {
                     val landmark = document.toObject<Landmark>()
@@ -268,16 +272,18 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
     }
 
     private fun getMarkerIcon(iconType: String): BitmapDescriptor {
-        val hue = when (iconType) {
-            "FOOD" -> BitmapDescriptorFactory.HUE_ORANGE
-            "SCENERY" -> BitmapDescriptorFactory.HUE_GREEN
-            "ONSEN" -> BitmapDescriptorFactory.HUE_CYAN
-            "SHOPPING" -> BitmapDescriptorFactory.HUE_MAGENTA
-            "SIGHTSEEING" -> BitmapDescriptorFactory.HUE_YELLOW
-            "BRONZE_PIN", "SILVER_PIN", "GOLD_PIN", "MOON_ICON" -> BitmapDescriptorFactory.HUE_AZURE
-            else -> BitmapDescriptorFactory.HUE_RED // Default for PIN and others
+        return when (iconType) {
+            "BRONZE_PIN" -> BitmapDescriptorFactory.fromResource(R.drawable.ic_landmark_bronze_pin)
+            "SILVER_PIN" -> BitmapDescriptorFactory.fromResource(R.drawable.ic_landmark_silver_pin)
+            "GOLD_PIN" -> BitmapDescriptorFactory.fromResource(R.drawable.ic_landmark_gold_pin)
+            "MOON_ICON" -> BitmapDescriptorFactory.fromResource(R.drawable.ic_landmark_moon)
+            "FOOD" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE)
+            "SCENERY" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)
+            "ONSEN" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_CYAN)
+            "SHOPPING" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA)
+            "SIGHTSEEING" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_YELLOW)
+            else -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)
         }
-        return BitmapDescriptorFactory.defaultMarker(hue)
     }
 
     private fun saveRecordChanges() {
@@ -289,8 +295,14 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
             return
         }
 
+        val userId = auth.currentUser?.uid
+        if (userId == null) {
+            Toast.makeText(this, "ログインが必要です。", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         recordId?.let { id ->
-            firestore.collection("records").document(id)
+            firestore.collection("users").document(userId).collection("records").document(id)
                 .update(mapOf("name" to newTitle, "memo" to newMemo))
                 .addOnSuccessListener {
                     Toast.makeText(this, "変更を保存しました。", Toast.LENGTH_SHORT).show()
@@ -304,46 +316,72 @@ class ReviewActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
-    private fun downloadAndPlayAudio() {
-        record?.audioPins?.firstOrNull()?.audioUrl?.let { audioUrl ->
-            if (audioUrl.isNotEmpty()) {
-                binding.btnPlayAudio.text = "準備中..."
-                binding.btnPlayAudio.isEnabled = false
-                val storageRef = Firebase.storage.getReferenceFromUrl(audioUrl)
-                storageRef.downloadUrl.addOnSuccessListener { uri ->
-                    try {
-                        mediaPlayer = MediaPlayer().apply {
-                            setDataSource(this@ReviewActivity, uri)
-                            prepareAsync()
-                            setOnPreparedListener { player ->
-                                binding.btnPlayAudio.isEnabled = true
-                                player.start()
-                                binding.btnPlayAudio.text = "一時停止"
-                                binding.btnPlayAudio.setIconResource(android.R.drawable.ic_media_pause)
-                            }
-                            setOnCompletionListener { player ->
-                                binding.btnPlayAudio.text = "音声を再生"
-                                binding.btnPlayAudio.setIconResource(android.R.drawable.ic_media_play)
-                                player.reset()
-                            }
-                        }
-                    } catch (e: Exception) {
-                        handlePlaybackError("MediaPlayer setup failed", e)
-                    }
-                }.addOnFailureListener { e ->
-                    handlePlaybackError("Audio download failed", e)
-                }
-            } else {
-                Toast.makeText(this, "音声URLが無効です。", Toast.LENGTH_SHORT).show()
-            }
-        } ?: Toast.makeText(this, "再生する音声がありません。", Toast.LENGTH_SHORT).show()
+    private fun drawAudioPins(audioPins: List<AudioPin>) {
+        audioPins.forEach { pin ->
+            val marker = googleMap.addMarker(
+                MarkerOptions()
+                    .position(LatLng(pin.latitude, pin.longitude))
+                    .title("音声メモ")
+                    .icon(bitmapDescriptorFromVector(this, R.drawable.ic_audio_pin))
+            )
+            marker?.tag = pin
+        }
     }
-    
+
+    override fun onMarkerClick(marker: Marker): Boolean {
+        when (val tag = marker.tag) {
+            is AudioPin -> {
+                playAudioFromUrl(tag.audioUrl)
+                return true // Prevent info window from showing
+            }
+            is Landmark -> {
+                // Let the default behavior handle it (show info window)
+                return false
+            }
+        }
+        return false
+    } 
+
+    private fun playAudioFromUrl(audioUrl: String) {
+        if (mediaPlayer?.isPlaying == true) {
+            mediaPlayer?.stop()
+        }
+        mediaPlayer?.reset()
+
+        if (audioUrl.isNotEmpty()) {
+            Toast.makeText(this, "音声再生の準備をしています...", Toast.LENGTH_SHORT).show()
+            val storageRef = Firebase.storage.getReferenceFromUrl(audioUrl)
+            storageRef.downloadUrl.addOnSuccessListener { uri ->
+                try {
+                    mediaPlayer = MediaPlayer().apply {
+                        setDataSource(this@ReviewActivity, uri)
+                        prepareAsync()
+                        setOnPreparedListener { player ->
+                            Toast.makeText(this@ReviewActivity, "再生開始", Toast.LENGTH_SHORT).show()
+                            player.start()
+                        }
+                        setOnCompletionListener { player ->
+                            Toast.makeText(this@ReviewActivity, "再生終了", Toast.LENGTH_SHORT).show()
+                            player.release()
+                            mediaPlayer = null
+                        }
+                    }
+                } catch (e: Exception) {
+                    handlePlaybackError("MediaPlayer setup failed", e)
+                }
+            }.addOnFailureListener { e ->
+                handlePlaybackError("Audio download failed", e)
+            }
+        } else {
+            Toast.makeText(this, "音声URLが無効です。", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun handlePlaybackError(logMessage: String, e: Exception? = null) {
         e?.let { Log.e("ReviewActivity", logMessage, it) }
         Toast.makeText(this, "音声の再生に失敗しました。", Toast.LENGTH_SHORT).show()
-        binding.btnPlayAudio.text = "音声を再生"
-        binding.btnPlayAudio.isEnabled = true
+        mediaPlayer?.release()
+        mediaPlayer = null
     }
 
     override fun onStop() {
