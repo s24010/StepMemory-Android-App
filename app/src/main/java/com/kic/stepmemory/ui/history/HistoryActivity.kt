@@ -8,6 +8,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.kic.stepmemory.MainActivity
@@ -21,18 +22,22 @@ class HistoryActivity : AppCompatActivity() {
     private lateinit var recordAdapter: RecordAdapter
     private val recordsList: MutableList<Record> = mutableListOf()
     private lateinit var firestore: FirebaseFirestore
+    private lateinit var auth: FirebaseAuth
+    private var userId: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityHistoryBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        setSupportActionBar(binding.toolbarHistory)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = "記録履歴"
 
         firestore = FirebaseFirestore.getInstance()
+        auth = FirebaseAuth.getInstance()
+        userId = auth.currentUser?.uid
 
-        // ★★★ Adapterの初期化を修正 ★★★
         recordAdapter = RecordAdapter(
             onItemClick = { record ->
                 navigateToReviewScreen(record)
@@ -47,15 +52,24 @@ class HistoryActivity : AppCompatActivity() {
             adapter = recordAdapter
         }
 
-        fetchRecordsFromFirestore()
+        if (userId == null) {
+            binding.progressBar.visibility = View.GONE
+            binding.tvNoRecords.visibility = View.VISIBLE
+            binding.tvNoRecords.text = "記録を表示するにはログインが必要です。"
+            Toast.makeText(this, "ログインが必要です。", Toast.LENGTH_LONG).show()
+        } else {
+            fetchRecordsFromFirestore()
+        }
     }
 
     private fun fetchRecordsFromFirestore() {
+        val currentUserId = userId ?: return
+
         binding.progressBar.visibility = View.VISIBLE
         binding.tvNoRecords.visibility = View.GONE
         binding.rvRecords.visibility = View.GONE
 
-        firestore.collection("records")
+        firestore.collection("users").document(currentUserId).collection("records")
             .orderBy("createdAt", Query.Direction.DESCENDING)
             .get()
             .addOnSuccessListener { querySnapshot ->
@@ -69,7 +83,7 @@ class HistoryActivity : AppCompatActivity() {
                     }
                 }
 
-                Log.d("HistoryActivity", "取得した記録の件数: ${recordsList.size}件")
+                Log.d("HistoryActivity", "取得した記録の件数: ${recordsList.size}件 for user $currentUserId")
 
                 if (recordsList.isEmpty()) {
                     Log.d("HistoryActivity", "分岐: リストは空です。'記録がありません'を表示します。")
@@ -91,7 +105,6 @@ class HistoryActivity : AppCompatActivity() {
             }
     }
 
-    // ★★★ 削除確認ダイアログを表示する関数 ★★★
     private fun showDeleteConfirmationDialog(record: Record) {
         AlertDialog.Builder(this)
             .setTitle("記録の削除")
@@ -103,14 +116,14 @@ class HistoryActivity : AppCompatActivity() {
             .show()
     }
 
-    // ★★★ Firestoreから記録を削除する関数 ★★★
     private fun deleteRecordFromFirestore(record: Record) {
+        val currentUserId = userId ?: return
         if (record.idUUID.isEmpty()) {
             Toast.makeText(this, "削除エラー: 記録IDが見つかりません。", Toast.LENGTH_SHORT).show()
             return
         }
         binding.progressBar.visibility = View.VISIBLE
-        firestore.collection("records").document(record.idUUID).delete()
+        firestore.collection("users").document(currentUserId).collection("records").document(record.idUUID).delete()
             .addOnSuccessListener {
                 binding.progressBar.visibility = View.GONE
                 Toast.makeText(this, "記録を削除しました。", Toast.LENGTH_SHORT).show()

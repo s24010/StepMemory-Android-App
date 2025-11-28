@@ -22,13 +22,17 @@ import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
+import com.google.android.gms.maps.model.BitmapDescriptor
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.maps.model.PolylineOptions
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
+import com.google.gson.Gson
 import com.kic.stepmemory.R
+import com.kic.stepmemory.data.AudioPin
 import com.kic.stepmemory.data.Landmark
 import com.kic.stepmemory.databinding.ActivityRecordingBinding
 import com.kic.stepmemory.services.LocationTrackingService
@@ -36,15 +40,15 @@ import com.kic.stepmemory.ui.landmark.AddLandmarkBottomSheet
 import com.kic.stepmemory.ui.memo.MemoActivity
 import java.io.File
 import java.io.IOException
-import java.util.UUID
+import java.util.*
 
 class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private lateinit var binding: ActivityRecordingBinding
     private lateinit var googleMap: GoogleMap
     private lateinit var fusedLocationClient: FusedLocationProviderClient
-    private lateinit var firestore: FirebaseFirestore
     private lateinit var storage: FirebaseStorage
+    private lateinit var auth: FirebaseAuth
 
     private var isTracking = false
     private var currentPathPoints: MutableList<LatLng> = LocationTrackingService.currentPathPoints
@@ -52,10 +56,11 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
     private var trackingStartTime: Long = 0L
 
     private var mediaRecorder: MediaRecorder? = null
-    private var audioFilePath: String? = null
-    private var uploadedAudioUrl: String? = null
     private var isAudioRecording = false
     private val AUDIO_PERMISSION_REQUEST_CODE = 2002
+
+    private val recordedAudioPins = mutableListOf<AudioPin>()
+    private val recordedLandmarks = mutableListOf<Landmark>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,8 +68,8 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
         setContentView(binding.root)
 
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-        firestore = FirebaseFirestore.getInstance()
         storage = FirebaseStorage.getInstance()
+        auth = FirebaseAuth.getInstance()
 
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = "記録中"
@@ -94,7 +99,7 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
                 if (location != null) {
                     val currentLatLng = LatLng(location.latitude, location.longitude)
                     AddLandmarkBottomSheet(currentLatLng.latitude, currentLatLng.longitude) { landmark ->
-                        saveLandmarkToFirestore(landmark)
+                        addLandmarkToList(landmark)
                     }.show(supportFragmentManager, AddLandmarkBottomSheet.TAG)
                 } else {
                     Toast.makeText(this, "現在地が取得できませんでした。", Toast.LENGTH_SHORT).show()
@@ -118,7 +123,6 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
 
         enableMyLocationLayer()
         moveCameraToCurrentLocation()
-        fetchAndDrawLandmarks()
 
         isTracking = LocationTrackingService.isServiceRunning
         updateTrackingButtonState()
@@ -128,48 +132,30 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
-    private fun saveLandmarkToFirestore(landmark: Landmark) {
-        firestore.collection("landmarks")
-            .add(landmark)
-            .addOnSuccessListener {
-                Toast.makeText(this, "ランドマークを登録しました！", Toast.LENGTH_SHORT).show()
-                fetchAndDrawLandmarks(clearMap = false)
-            }
-            .addOnFailureListener { e ->
-                Toast.makeText(this, "ランドマークの登録に失敗しました: ${e.message}", Toast.LENGTH_LONG).show()
-            }
+    private fun addLandmarkToList(landmark: Landmark) {
+        recordedLandmarks.add(landmark)
+        Toast.makeText(this, "ランドマークを一時保存しました！", Toast.LENGTH_SHORT).show()
+        googleMap.addMarker(
+            MarkerOptions()
+                .position(LatLng(landmark.latitude, landmark.longitude))
+                .title(landmark.title)
+                .snippet(landmark.episode)
+                .icon(getMarkerIcon(landmark.iconType))
+        )
     }
 
-    private fun fetchAndDrawLandmarks(clearMap: Boolean = true) {
-        if (clearMap) {
-            googleMap.clear()
-        }
-        firestore.collection("landmarks").get()
-            .addOnSuccessListener { querySnapshot ->
-                for (document in querySnapshot.documents) {
-                    val landmark = document.toObject(Landmark::class.java)
-                    landmark?.let {
-                        val latLng = LatLng(it.latitude, it.longitude)
-                        googleMap.addMarker(
-                            MarkerOptions()
-                                .position(latLng)
-                                .title(it.title)
-                                .snippet(it.episode)
-                                .icon(BitmapDescriptorFactory.defaultMarker(getMarkerColor(it.iconType)))
-                        )
-                    }
-                }
-            }
-    }
-
-    private fun getMarkerColor(iconType: String): Float {
+    private fun getMarkerIcon(iconType: String): BitmapDescriptor {
         return when (iconType) {
-            "FOOD" -> BitmapDescriptorFactory.HUE_ORANGE
-            "SCENERY" -> BitmapDescriptorFactory.HUE_GREEN
-            "ONSEN" -> BitmapDescriptorFactory.HUE_CYAN
-            "SHOPPING" -> BitmapDescriptorFactory.HUE_MAGENTA
-            "SIGHTSEEING" -> BitmapDescriptorFactory.HUE_YELLOW
-            else -> BitmapDescriptorFactory.HUE_RED
+            "BRONZE_PIN" -> BitmapDescriptorFactory.fromResource(R.drawable.ic_landmark_bronze_pin)
+            "SILVER_PIN" -> BitmapDescriptorFactory.fromResource(R.drawable.ic_landmark_silver_pin)
+            "GOLD_PIN" -> BitmapDescriptorFactory.fromResource(R.drawable.ic_landmark_gold_pin)
+            "MOON_ICON" -> BitmapDescriptorFactory.fromResource(R.drawable.ic_landmark_moon)
+            "FOOD" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE)
+            "SCENERY" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)
+            "ONSEN" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_CYAN)
+            "SHOPPING" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA)
+            "SIGHTSEEING" -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_YELLOW)
+            else -> BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)
         }
     }
 
@@ -267,8 +253,14 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
         Toast.makeText(this, "記録を終了しました。", Toast.LENGTH_SHORT).show()
         val memoIntent = Intent(this, MemoActivity::class.java)
 
-        uploadedAudioUrl?.let {
-            memoIntent.putExtra("AUDIO_URL", it)
+        if (recordedAudioPins.isNotEmpty()) {
+            val audioPinsJson = Gson().toJson(recordedAudioPins)
+            memoIntent.putExtra("AUDIO_PINS_JSON", audioPinsJson)
+        }
+
+        if (recordedLandmarks.isNotEmpty()) {
+            val landmarksJson = Gson().toJson(recordedLandmarks)
+            memoIntent.putExtra("LANDMARKS_JSON", landmarksJson)
         }
 
         memoIntent.putExtra("RECORD_START_TIME", trackingStartTime)
@@ -280,7 +272,6 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private fun drawPathOnMap() {
         googleMap.clear()
-        fetchAndDrawLandmarks()
         if (currentPathPoints.size > 1) {
             googleMap.addMarker(MarkerOptions().position(currentPathPoints.first()).title("開始地点"))
             val polylineOptions = PolylineOptions().addAll(currentPathPoints).color(Color.BLUE).width(10f)
@@ -322,13 +313,13 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
             return
         }
         val audioFile = File(externalCacheDir, "${UUID.randomUUID()}.3gp")
-        audioFilePath = audioFile.absolutePath
+        binding.fabRecordAudio.tag = audioFile.absolutePath
 
         mediaRecorder = MediaRecorder().apply {
             setAudioSource(MediaRecorder.AudioSource.MIC)
             setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
             setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
-            setOutputFile(audioFilePath)
+            setOutputFile(audioFile.absolutePath)
             try {
                 prepare()
                 start()
@@ -354,32 +345,43 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
         binding.fabRecordAudio.setImageResource(android.R.drawable.ic_btn_speak_now)
         binding.fabRecordAudio.isEnabled = false
 
-        uploadAudio()
+        uploadAudioAndCreatePin()
     }
 
-    private fun uploadAudio() {
-        if (audioFilePath == null) return
+    private fun uploadAudioAndCreatePin() {
+        val audioFilePath = binding.fabRecordAudio.tag as? String ?: return
+        val file = Uri.fromFile(File(audioFilePath))
+        val userId = auth.currentUser?.uid ?: return
 
-        val file = Uri.fromFile(File(audioFilePath!!))
-        val storageRef = storage.reference.child("audio/${file.lastPathSegment}")
-        val uploadTask = storageRef.putFile(file)
+        val storageRef = storage.reference.child("users/$userId/audio/${file.lastPathSegment}")
 
-        uploadTask.continueWithTask { task ->
-            if (!task.isSuccessful) {
-                task.exception?.let { throw it }
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) { return }
+        fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
+            if (location == null) {
+                Toast.makeText(this, "現在地が取得できず、音声ピンを作成できませんでした。", Toast.LENGTH_SHORT).show()
+                binding.fabRecordAudio.isEnabled = true
+                binding.tvRecordingStatus.visibility = View.GONE
+                return@addOnSuccessListener
             }
-            storageRef.downloadUrl
-        }.addOnCompleteListener { task ->
-            if (task.isSuccessful) {
-                uploadedAudioUrl = task.result.toString()
-                binding.tvRecordingStatus.text = "アップロード完了！"
-                Toast.makeText(this, "音声のアップロードが完了しました。", Toast.LENGTH_SHORT).show()
-            } else {
-                binding.tvRecordingStatus.text = "アップロード失敗"
-                Toast.makeText(this, "音声のアップロードに失敗しました: ${task.exception?.message}", Toast.LENGTH_LONG).show()
+            val recordedAtLatLng = LatLng(location.latitude, location.longitude)
+
+            storageRef.putFile(file).continueWithTask { task ->
+                if (!task.isSuccessful) { task.exception?.let { throw it } }
+                storageRef.downloadUrl
+            }.addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    val downloadUrl = task.result.toString()
+                    val newAudioPin = AudioPin(downloadUrl, recordedAtLatLng.latitude, recordedAtLatLng.longitude, Date())
+                    recordedAudioPins.add(newAudioPin)
+
+                    binding.tvRecordingStatus.text = "音声ピンを${recordedAudioPins.size}個作成しました"
+                    Toast.makeText(this, "音声ピンを作成しました。", Toast.LENGTH_SHORT).show()
+                } else {
+                    binding.tvRecordingStatus.text = "アップロード失敗"
+                    Toast.makeText(this, "音声のアップロードに失敗しました: ${task.exception?.message}", Toast.LENGTH_LONG).show()
+                }
+                binding.fabRecordAudio.isEnabled = true
             }
-            binding.fabRecordAudio.isEnabled = true
-            audioFilePath = null
         }
     }
 
@@ -394,7 +396,6 @@ class RecordingActivity : AppCompatActivity(), OnMapReadyCallback {
         updateTrackingButtonState()
 
         if(::googleMap.isInitialized) {
-            fetchAndDrawLandmarks()
             if (isTracking) {
                 drawPathOnMap()
             }

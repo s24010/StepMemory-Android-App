@@ -10,6 +10,7 @@ import com.google.android.gms.maps.StreetViewPanorama
 import com.google.android.gms.maps.SupportStreetViewPanoramaFragment
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.StreetViewSource
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.toObject
 import com.kic.stepmemory.R
@@ -22,6 +23,7 @@ class StreetViewActivity : AppCompatActivity(), OnStreetViewPanoramaReadyCallbac
     private var recordId: String? = null
     private lateinit var firestore: FirebaseFirestore
     private lateinit var panorama: StreetViewPanorama
+    private lateinit var auth: FirebaseAuth
 
     private var pathPoints: List<LatLng> = listOf()
     private var currentIndex = 0
@@ -36,6 +38,8 @@ class StreetViewActivity : AppCompatActivity(), OnStreetViewPanoramaReadyCallbac
 
         recordId = intent.getStringExtra("RECORD_ID")
         firestore = FirebaseFirestore.getInstance()
+        auth = FirebaseAuth.getInstance()
+
 
         val streetViewPanoramaFragment =
             supportFragmentManager.findFragmentById(R.id.street_view_panorama) as SupportStreetViewPanoramaFragment
@@ -75,7 +79,14 @@ class StreetViewActivity : AppCompatActivity(), OnStreetViewPanoramaReadyCallbac
     }
 
     private fun fetchRecordAndSetupPanorama(id: String) {
-        firestore.collection("records").document(id).get()
+        val userId = auth.currentUser?.uid
+        if (userId == null) {
+            Toast.makeText(this, "ログインが必要です。", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+
+        firestore.collection("users").document(userId).collection("records").document(id).get()
             .addOnSuccessListener { document ->
                 val record = document.toObject<Record>()
                 if (record != null && record.pathPoints.isNotEmpty()) {

@@ -30,13 +30,15 @@
             android:exported="false" />
         <activity
             android:name=".ui.review.ReviewActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar" />
         <activity
             android:name=".ui.memo.MemoActivity"
             android:exported="false" />
         <activity
             android:name=".ui.history.HistoryActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar" />
         <activity
             android:name=".ui.recording.RecordingActivity"
             android:exported="false" />
